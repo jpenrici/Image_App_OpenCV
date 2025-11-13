@@ -8,12 +8,12 @@
 #include <string_view>
 #include <tuple>
 
-inline std::filesystem::path f(const std::filesystem::path &dir,
-                               const std::filesystem::path &filename) {
-  return dir / filename;
+inline std::string f(const std::string_view dir,
+                     const std::string_view filename) {
+  return (std::filesystem::path(dir) / filename).string();
 }
 
-const std::filesystem::path TEST_PATH = "resource/test";
+const std::string TEST_PATH = "resource/test";
 const auto IMG1_PATH = f(TEST_PATH, "imgA.png");
 const auto IMG2_PATH = f(TEST_PATH, "imgB.png");
 const auto IMG3_PATH = f(TEST_PATH, "imgC.png");
@@ -27,9 +27,9 @@ void image() {
   cv::Mat imgA(200, 200, CV_8UC3, cv::Scalar(255, 0, 0)); // Blue
   cv::Mat imgB(200, 200, CV_8UC3, cv::Scalar(0, 0, 255)); // Red
 
-  imgtools::save(IMG1_PATH.string(), imgA);
-  imgtools::save(IMG2_PATH.string(), imgA);
-  imgtools::save(IMG3_PATH.string(), imgB);
+  imgtools::save(IMG1_PATH, imgA);
+  imgtools::save(IMG2_PATH, imgA);
+  imgtools::save(IMG3_PATH, imgB);
 }
 
 void test_basic(
@@ -50,7 +50,11 @@ void test_basic(
   std::println("{}", analyzer.compare_basic());
   std::println("{}", analyzer.compare_color_space());
 
-  analyzer.export_report(f(TEST_PATH, output_name).concat(".txt"));
+  std::string filename{output_name};
+  if (std::filesystem::path(output_name).extension() != ".txt") {
+    filename.append(".txt");
+  }
+  analyzer.export_report(f(TEST_PATH, filename));
 }
 
 void test() {
@@ -60,18 +64,15 @@ void test() {
   image();
 
   // Check paths
-  if (!imgtools::exists(IMG1_PATH.string()) ||
-      !imgtools::exists(IMG2_PATH.string()) ||
-      !imgtools::exists(IMG3_PATH.string())) {
+  if (!imgtools::exists(IMG1_PATH) || !imgtools::exists(IMG2_PATH) ||
+      !imgtools::exists(IMG3_PATH)) {
     std::println("Images missing. Aborting test!");
     return;
   }
 
   // Basic Test
-  test_basic({IMG1_PATH.string(), IMG2_PATH.string(),
-              "result_img1_img2"}); // identical images
-  test_basic({IMG1_PATH.string(), IMG3_PATH.string(),
-              "result_img1_img3"}); // different images
+  test_basic({IMG1_PATH, IMG2_PATH, "result_img1_img2"}); // identical images
+  test_basic({IMG1_PATH, IMG3_PATH, "result_img1_img3"}); // different images
 
   std::println("Test completed.");
 }

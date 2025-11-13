@@ -35,7 +35,7 @@ set_target_properties(${LIBRARY_NAME} PROPERTIES
 target_link_libraries(${LIBRARY_NAME} PUBLIC ${OpenCV_LIBS})
 
 # ===== Test =====
-set(TEST imgtools_test)
+set(TEST ${LIBRARY_NAME}_test)
 
 add_executable(${TEST} src/test.cpp)
 
