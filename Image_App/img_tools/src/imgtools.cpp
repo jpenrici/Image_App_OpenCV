@@ -1,5 +1,6 @@
 #include "imgtools.hpp"
 
+#include <chrono>
 #include <fstream>
 #include <print>
 #include <sstream>
@@ -105,15 +106,40 @@ auto ImageAnalyzer::compare_color_space() const -> std::string {
   return oss.str();
 }
 
-// Export basic report.
+// Export a detailed report with headers and separators.
 auto ImageAnalyzer::export_report(
     const std::filesystem::path &output_path) const -> bool {
+
   std::ofstream file(output_path);
   if (!file.is_open())
     return false;
 
-  file << compare_basic() << "\n";
-  file << compare_color_space() << "\n";
+  std::ostringstream oss;
+
+  // Header
+  oss << "========================================\n";
+  oss << "[Image Comparison Report]\n";
+  oss << "========================================\n\n";
+
+  oss << "[Images]\n";
+  oss << "Path 1: " << path1_ << "\n";
+  oss << "Path 2: " << path2_ << "\n";
+
+  // Timestamp (opcional)
+  auto now =
+      std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+  oss << "Date:   " << std::put_time(std::localtime(&now), "%Y-%m-%d %H:%M:%S")
+      << "\n\n";
+
+  // Append comparisons
+  oss << compare_basic() << "\n";
+  oss << compare_color_space() << "\n";
+
+  // Footer
+  oss << "----------------------------------------\n";
+  oss << "End of report.\n";
+
+  file << oss.str();
   file.close();
 
   return true;

@@ -3,60 +3,82 @@
 #include <cstdlib>
 #include <expected>
 #include <filesystem>
+#include <format>
 #include <print>
 #include <string_view>
+#include <tuple>
 
-using namespace imgtools;
-
-void image() {
-  // Create three test images (two identical, one different).
-  const std::filesystem::path dir = "build/test";
-  std::filesystem::create_directories(dir);
-
-  cv::Mat imgA(200, 200, CV_8UC3, cv::Scalar(255, 0, 0)); // Blue
-  cv::Mat imgB = imgA.clone();                            // Identical
-  cv::Mat imgC(200, 200, CV_8UC3, cv::Scalar(0, 0, 255)); // Red
-
-  save(dir / "imgA.png", imgA);
-  save(dir / "imgB.png", imgB);
-  save(dir / "imgC.png", imgC);
+inline std::filesystem::path f(const std::filesystem::path &dir,
+                               const std::filesystem::path &filename) {
+  return dir / filename;
 }
 
-void test_basic(std::string_view path1, std::string_view path2) {
-  std::println("Testing basic comparison between '{}' and '{}'", path1, path2);
+const std::filesystem::path TEST_PATH = "resource/test";
+const auto IMG1_PATH = f(TEST_PATH, "imgA.png");
+const auto IMG2_PATH = f(TEST_PATH, "imgB.png");
+const auto IMG3_PATH = f(TEST_PATH, "imgC.png");
 
-  ImageAnalyzer analyzer(path1, path2);
+void image() {
+  const std::filesystem::path dir{TEST_PATH};
+  if (std::filesystem::create_directories(dir)) {
+    std::println("Directory created for testing!");
+  }
+
+  cv::Mat imgA(200, 200, CV_8UC3, cv::Scalar(255, 0, 0)); // Blue
+  cv::Mat imgB(200, 200, CV_8UC3, cv::Scalar(0, 0, 255)); // Red
+
+  imgtools::save(IMG1_PATH.string(), imgA);
+  imgtools::save(IMG2_PATH.string(), imgA);
+  imgtools::save(IMG3_PATH.string(), imgB);
+}
+
+void test_basic(
+    std::tuple<std::string_view, std::string_view, std::string_view> paths) {
+
+  auto [path1, path2, output_name] = paths;
+
+  std::println("Testing basic comparison between '{}' and '{}'\n",
+               std::filesystem::path(path1).filename().string(),
+               std::filesystem::path(path2).filename().string());
+
+  imgtools::ImageAnalyzer analyzer(path1, path2);
   if (!analyzer.load_images()) {
-    std::println("Failed to load images.");
+    std::println("Failed to load images!");
     return;
   }
 
   std::println("{}", analyzer.compare_basic());
   std::println("{}", analyzer.compare_color_space());
-  analyzer.export_report("build/test/report_basic.txt");
+
+  analyzer.export_report(f(TEST_PATH, output_name).concat(".txt"));
 }
 
 void test() {
   std::println("Start test ...");
 
+  // Create images for testing
   image();
 
-  const std::string imagePath1 = "build/test/imgA.png";
-  const std::string imagePath2 = "build/test/imgB.png";
-  const std::string imagePath3 = "build/test/imgC.png";
-
-  if (!exists(imagePath1) || !exists(imagePath2) || !exists(imagePath3)) {
-    std::println("Images missing. Aborting test.");
+  // Check paths
+  if (!imgtools::exists(IMG1_PATH.string()) ||
+      !imgtools::exists(IMG2_PATH.string()) ||
+      !imgtools::exists(IMG3_PATH.string())) {
+    std::println("Images missing. Aborting test!");
     return;
   }
 
-  test_basic(imagePath1, imagePath2); // identical images
-  test_basic(imagePath1, imagePath3); // different images
+  // Basic Test
+  test_basic({IMG1_PATH.string(), IMG2_PATH.string(),
+              "result_img1_img2"}); // identical images
+  test_basic({IMG1_PATH.string(), IMG3_PATH.string(),
+              "result_img1_img3"}); // different images
 
   std::println("Test completed.");
 }
 
 auto main() -> int {
+
   test();
+
   return EXIT_SUCCESS;
 }
