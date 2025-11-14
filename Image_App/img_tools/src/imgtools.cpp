@@ -169,12 +169,25 @@ auto ImageAnalyzer::compare_histogram() const -> std::string {
   oss << "Bhattacharyya:     " << bhatt << "\n";
 
   // --- Step 7: Basic interpretation based on correlation value ---
-  if (corr > 0.90)
-    oss << "Conclusion: Very similar histograms.\n";
-  else if (corr > 0.70)
-    oss << "Conclusion: Moderately similar histograms.\n";
+  oss << "Histogram Correlation: " << std::format("{:.4f}", corr) << "\n";
+
+  oss << "Similarity Score: " << std::format("{:.2f}%", corr * 100.0) << "\n";
+
+  oss << "Interpretation: ";
+  if (corr > 0.85)
+    oss << "Histograms are nearly identical";
+  else if (corr > 0.50)
+    oss << "Strong similarity between histograms";
+  else if (corr > 0.20)
+    oss << "Moderate similarity";
+  else if (corr > -0.20)
+    oss << "No correlation";
+  else if (corr > -0.50)
+    oss << "Moderate inverse relation";
   else
-    oss << "Conclusion: Different histograms.\n";
+    oss << "Histograms are inverses of each other";
+
+  oss << "\n";
 
   return oss.str();
 }
