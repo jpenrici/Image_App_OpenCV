@@ -4,6 +4,7 @@
 
 #include <expected>
 #include <filesystem>
+#include <utility>
 
 namespace imgtools {
 
@@ -12,8 +13,8 @@ public:
     explicit ImageAnalyzer(std::string_view path1, std::string_view path2) noexcept;
     ~ImageAnalyzer() noexcept = default;
 
-    ImageAnalyzer(const ImageAnalyzer&) = delete;
-    auto operator=(const ImageAnalyzer&) -> ImageAnalyzer& = delete;
+    ImageAnalyzer(const ImageAnalyzer&) = default;
+    auto operator=(const ImageAnalyzer&) -> ImageAnalyzer& = default;
 
     ImageAnalyzer(ImageAnalyzer&&) noexcept = default;
     auto operator=(ImageAnalyzer&&) noexcept -> ImageAnalyzer& = default;
@@ -26,6 +27,9 @@ public:
     [[nodiscard]] auto compare_features() const -> std::string;
 
     auto export_report(const std::filesystem::path& output_path) const -> bool;
+    auto export_report(std::string_view output_path) -> bool;
+
+    auto paths() const -> std::pair<std::filesystem::path, std::filesystem::path>;
 
 private:
     cv::Mat image1_;

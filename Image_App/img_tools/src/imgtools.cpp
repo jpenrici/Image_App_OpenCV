@@ -38,6 +38,11 @@ auto ImageAnalyzer::load_images() noexcept -> bool {
   return !image1_.empty() && !image2_.empty();
 }
 
+auto ImageAnalyzer::paths() const
+    -> std::pair<std::filesystem::path, std::filesystem::path> {
+  return {path1_, path2_};
+}
+
 // Compare file extension, file size, dimensions and channels.
 auto ImageAnalyzer::compare_basic() const -> std::string {
   std::ostringstream oss;
@@ -106,11 +111,84 @@ auto ImageAnalyzer::compare_color_space() const -> std::string {
   return oss.str();
 }
 
+auto ImageAnalyzer::compare_histogram() const -> std::string {
+
+  if (image1_.empty() || image2_.empty()) {
+    return "[Histogram]\nFailed: One or both images are not loaded.\n";
+  }
+
+  // --- Step 1: Convert BGR images to HSV ---
+  // OpenCV uses BGR (Blue Green Red) instead of the traditional RGB sequence.
+  // HSV makes histogram comparison more robust to brightness differences.
+  cv::Mat hsv1, hsv2;
+  cv::cvtColor(image1_, hsv1, cv::COLOR_BGR2HSV);
+  cv::cvtColor(image2_, hsv2, cv::COLOR_BGR2HSV);
+
+  // --- Step 2: Histogram parameters ---
+  // Number of bins for Hue and Saturation. More bins = more precision.
+  int h_bins{50};
+  int s_bins{60};
+  int hist_size[] = {h_bins, s_bins};
+
+  // Hue ranges from 0 to 179 in OpenCV.
+  // Saturation ranges from 0 to 255.
+  float h_range[] = {0.f, 180.f};
+  float s_range[] = {0.f, 256.f};
+  const float *ranges[] = {h_range, s_range};
+
+  // It compares only the H and S channels (channels 0 and 1 in HSV).
+  int channels[] = {0, 1};
+
+  cv::Mat hist1, hist2;
+
+  // --- Step 3: Compute 2D histograms ---
+  // cv::calcHist creates a histogram using the selected channels and ranges.
+  cv::calcHist(&hsv1, 1, channels, cv::Mat(), hist1, 2, hist_size, ranges, true,
+               false);
+  cv::calcHist(&hsv2, 1, channels, cv::Mat(), hist2, 2, hist_size, ranges, true,
+               false);
+
+  // --- Step 4: Normalize histograms ---
+  // Normalization ensures the comparison does not depend on image size.
+  cv::normalize(hist1, hist1, 0, 1, cv::NORM_MINMAX);
+  cv::normalize(hist2, hist2, 0, 1, cv::NORM_MINMAX);
+
+  // --- Step 5: Compute similarity metrics ---
+  // Multiple metrics give more insight about the histogram similarity.
+  double corr = cv::compareHist(hist1, hist2, cv::HISTCMP_CORREL);
+  double chisq = cv::compareHist(hist1, hist2, cv::HISTCMP_CHISQR);
+  double inter = cv::compareHist(hist1, hist2, cv::HISTCMP_INTERSECT);
+  double bhatt = cv::compareHist(hist1, hist2, cv::HISTCMP_BHATTACHARYYA);
+
+  // --- Step 6: Build output string ---
+  std::ostringstream oss;
+  oss << "[Histogram]\n";
+  oss << "Correlation:       " << corr << "\n";
+  oss << "Chi-Square:        " << chisq << "\n";
+  oss << "Intersection:      " << inter << "\n";
+  oss << "Bhattacharyya:     " << bhatt << "\n";
+
+  // --- Step 7: Basic interpretation based on correlation value ---
+  if (corr > 0.90)
+    oss << "Conclusion: Very similar histograms.\n";
+  else if (corr > 0.70)
+    oss << "Conclusion: Moderately similar histograms.\n";
+  else
+    oss << "Conclusion: Different histograms.\n";
+
+  return oss.str();
+}
+
 // Export a detailed report with headers and separators.
 auto ImageAnalyzer::export_report(
     const std::filesystem::path &output_path) const -> bool {
 
-  std::ofstream file(output_path);
+  std::string path{output_path};
+  if (std::filesystem::path(output_path).extension() != ".txt") {
+    path.append(".txt");
+  }
+
+  std::ofstream file(path);
   if (!file.is_open())
     return false;
 
@@ -125,7 +203,7 @@ auto ImageAnalyzer::export_report(
   oss << "Path 1: " << path1_ << "\n";
   oss << "Path 2: " << path2_ << "\n";
 
-  // Timestamp (opcional)
+  // Timestamp
   auto now =
       std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
   oss << "Date:   " << std::put_time(std::localtime(&now), "%Y-%m-%d %H:%M:%S")
@@ -134,6 +212,7 @@ auto ImageAnalyzer::export_report(
   // Append comparisons
   oss << compare_basic() << "\n";
   oss << compare_color_space() << "\n";
+  oss << compare_histogram() << "\n";
 
   // Footer
   oss << "----------------------------------------\n";
@@ -143,6 +222,10 @@ auto ImageAnalyzer::export_report(
   file.close();
 
   return true;
+}
+
+auto ImageAnalyzer::export_report(std::string_view output_path) -> bool {
+  return export_report(std::filesystem::path(output_path));
 }
 
 } // namespace imgtools
