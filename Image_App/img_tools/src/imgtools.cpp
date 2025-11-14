@@ -113,54 +113,66 @@ auto ImageAnalyzer::compare_color_space() const -> std::string {
 
 auto ImageAnalyzer::compare_histogram() const -> std::string {
 
+  // --- Step 1: Validate images ---
   if (image1_.empty() || image2_.empty()) {
     return "[Histogram]\nFailed: One or both images are not loaded.\n";
   }
 
-  // --- Step 1: Convert BGR images to HSV ---
-  // OpenCV uses BGR (Blue Green Red) instead of the traditional RGB sequence.
-  // HSV makes histogram comparison more robust to brightness differences.
-  cv::Mat hsv1, hsv2;
-  cv::cvtColor(image1_, hsv1, cv::COLOR_BGR2HSV);
-  cv::cvtColor(image2_, hsv2, cv::COLOR_BGR2HSV);
+  // --- Step 2: Convert safely to grayscale ---
+  // This guarantees full compatibility with:
+  // - 1 - channel grayscale
+  // - 3 - channel BGR
+  // - 4 - channel BGRA
+  cv::Mat gray1, gray2;
 
-  // --- Step 2: Histogram parameters ---
-  // Number of bins for Hue and Saturation. More bins = more precision.
-  int h_bins{50};
-  int s_bins{60};
-  int hist_size[] = {h_bins, s_bins};
+  auto to_gray = [](const cv::Mat &src, cv::Mat &dst) {
+    if (src.channels() == 1) {
+      dst = src.clone(); // already grayscale
+    } else if (src.channels() == 3) {
+      cv::cvtColor(src, dst, cv::COLOR_BGR2GRAY);
+    } else if (src.channels() == 4) {
+      cv::cvtColor(src, dst, cv::COLOR_BGRA2GRAY);
+    } else {
+      throw std::runtime_error("Unsupported number of channels for histogram.");
+    }
+  };
 
-  // Hue ranges from 0 to 179 in OpenCV.
-  // Saturation ranges from 0 to 255.
-  float h_range[] = {0.f, 180.f};
-  float s_range[] = {0.f, 256.f};
-  const float *ranges[] = {h_range, s_range};
+  try {
+    to_gray(image1_, gray1);
+    to_gray(image2_, gray2);
+  } catch (const std::exception &ex) {
+    return std::string("[Histogram]\nError: ") + ex.what() + "\n";
+  }
 
-  // It compares only the H and S channels (channels 0 and 1 in HSV).
-  int channels[] = {0, 1};
+  // --- Step 3: Histogram configuration (1D grayscale) ---
+  int histSize = 256;       // bins
+  float range[] = {0, 256}; // pixel values
+  const float *histRange = range;
+  int channel = 0; // grayscale = single channel
 
   cv::Mat hist1, hist2;
 
-  // --- Step 3: Compute 2D histograms ---
+  // --- Step 4: Compute histograms ---
   // cv::calcHist creates a histogram using the selected channels and ranges.
-  cv::calcHist(&hsv1, 1, channels, cv::Mat(), hist1, 2, hist_size, ranges, true,
-               false);
-  cv::calcHist(&hsv2, 1, channels, cv::Mat(), hist2, 2, hist_size, ranges, true,
-               false);
+  cv::calcHist(&gray1, 1, &channel, cv::Mat(), hist1, 1, &histSize, &histRange,
+               true, false);
 
-  // --- Step 4: Normalize histograms ---
+  cv::calcHist(&gray2, 1, &channel, cv::Mat(), hist2, 1, &histSize, &histRange,
+               true, false);
+
+  // --- Step 5: Normalize for comparability ---
   // Normalization ensures the comparison does not depend on image size.
   cv::normalize(hist1, hist1, 0, 1, cv::NORM_MINMAX);
   cv::normalize(hist2, hist2, 0, 1, cv::NORM_MINMAX);
 
-  // --- Step 5: Compute similarity metrics ---
+  // --- Step 6: Compute similarity metrics ---
   // Multiple metrics give more insight about the histogram similarity.
   double corr = cv::compareHist(hist1, hist2, cv::HISTCMP_CORREL);
   double chisq = cv::compareHist(hist1, hist2, cv::HISTCMP_CHISQR);
   double inter = cv::compareHist(hist1, hist2, cv::HISTCMP_INTERSECT);
   double bhatt = cv::compareHist(hist1, hist2, cv::HISTCMP_BHATTACHARYYA);
 
-  // --- Step 6: Build output string ---
+  // --- Step 7: Build output string ---
   std::ostringstream oss;
   oss << "[Histogram]\n";
   oss << "Correlation:       " << corr << "\n";
@@ -168,7 +180,7 @@ auto ImageAnalyzer::compare_histogram() const -> std::string {
   oss << "Intersection:      " << inter << "\n";
   oss << "Bhattacharyya:     " << bhatt << "\n";
 
-  // --- Step 7: Basic interpretation based on correlation value ---
+  // --- Step 8: Basic interpretation based on correlation value ---
   oss << "Histogram Correlation: " << std::format("{:.4f}", corr) << "\n";
 
   oss << "Similarity Score: " << std::format("{:.2f}%", corr * 100.0) << "\n";

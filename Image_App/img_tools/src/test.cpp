@@ -23,9 +23,23 @@ void image() {
     std::println("Directory created for testing!");
   }
 
-  cv::Mat img1(200, 200, CV_8UC3, cv::Scalar(255, 0, 0)); // Blue
+  const int width = 256;
+  const int height = 256;
+
+  cv::Mat img1(height, width, CV_8UC1);
+  cv::Mat img3(height, width, CV_8UC1);
+
+  // Build gradient: left = 0, right = 255
+  for (int y = 0; y < height; ++y) {
+    for (int x = 0; x < width; ++x) {
+      img1.at<uchar>(y, x) = static_cast<uchar>(x);       // 0..255
+      img3.at<uchar>(y, x) = 255 - static_cast<uchar>(x); // inverted gradient
+    }
+  }
+
   cv::Mat img2 = img1;
-  cv::Mat img3(200, 200, CV_8UC3, cv::Scalar(0, 0, 255)); // Red
+
+  // TO DO - Other images ...
 
   imgtools::save(IMG1_PATH, img1);
   imgtools::save(IMG2_PATH, img2);
