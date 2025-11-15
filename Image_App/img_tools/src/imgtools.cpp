@@ -32,10 +32,43 @@ ImageAnalyzer::ImageAnalyzer(std::string_view path1,
 
 // Load both images safely.
 auto ImageAnalyzer::load_images() noexcept -> bool {
+  // Load
   image1_ = cv::imread(path1_.string(), cv::IMREAD_UNCHANGED);
   image2_ = cv::imread(path2_.string(), cv::IMREAD_UNCHANGED);
 
-  return !image1_.empty() && !image2_.empty();
+  // Converts image to grayscale to ensure full compatibility in analysis.
+  if (!image1_.empty() && !image2_.empty()) {
+    // - 1 - channel grayscale
+    // - 3 - channel BGR
+    // - 4 - channel BGRA
+    auto to_gray = [](const cv::Mat &src, cv::Mat &dst) {
+      if (src.channels() == 1) {
+        dst = src.clone(); // already grayscale
+      } else if (src.channels() == 3) {
+        cv::cvtColor(src, dst, cv::COLOR_BGR2GRAY);
+      } else if (src.channels() == 4) {
+        cv::cvtColor(src, dst, cv::COLOR_BGRA2GRAY);
+      } else {
+        throw std::runtime_error(
+            "Unsupported number of channels for histogram.");
+      }
+    };
+
+    try {
+      to_gray(image1_, grayscale1_);
+      to_gray(image2_, grayscale2_);
+    } catch (const std::exception &ex) {
+      std::println("[Grayscale Conversion]\nError: {}", ex.what());
+    }
+
+    return true;
+  }
+
+  return false;
+}
+
+auto ImageAnalyzer::images() const -> std::pair<cv::Mat, cv::Mat> {
+  return {image1_, image2_};
 }
 
 auto ImageAnalyzer::paths() const
@@ -119,29 +152,9 @@ auto ImageAnalyzer::compare_histogram() const -> std::string {
   }
 
   // --- Step 2: Convert safely to grayscale ---
-  // This guarantees full compatibility with:
-  // - 1 - channel grayscale
-  // - 3 - channel BGR
-  // - 4 - channel BGRA
-  cv::Mat gray1, gray2;
-
-  auto to_gray = [](const cv::Mat &src, cv::Mat &dst) {
-    if (src.channels() == 1) {
-      dst = src.clone(); // already grayscale
-    } else if (src.channels() == 3) {
-      cv::cvtColor(src, dst, cv::COLOR_BGR2GRAY);
-    } else if (src.channels() == 4) {
-      cv::cvtColor(src, dst, cv::COLOR_BGRA2GRAY);
-    } else {
-      throw std::runtime_error("Unsupported number of channels for histogram.");
-    }
-  };
-
-  try {
-    to_gray(image1_, gray1);
-    to_gray(image2_, gray2);
-  } catch (const std::exception &ex) {
-    return std::string("[Histogram]\nError: ") + ex.what() + "\n";
+  if (grayscale1_.empty() || grayscale2_.empty()) {
+    return "[Histogram]\nFailed: One or both images were not converted to "
+           "grayscale.\n";
   }
 
   // --- Step 3: Histogram configuration (1D grayscale) ---
@@ -154,11 +167,11 @@ auto ImageAnalyzer::compare_histogram() const -> std::string {
 
   // --- Step 4: Compute histograms ---
   // cv::calcHist creates a histogram using the selected channels and ranges.
-  cv::calcHist(&gray1, 1, &channel, cv::Mat(), hist1, 1, &histSize, &histRange,
-               true, false);
+  cv::calcHist(&grayscale1_, 1, &channel, cv::Mat(), hist1, 1, &histSize,
+               &histRange, true, false);
 
-  cv::calcHist(&gray2, 1, &channel, cv::Mat(), hist2, 1, &histSize, &histRange,
-               true, false);
+  cv::calcHist(&grayscale2_, 1, &channel, cv::Mat(), hist2, 1, &histSize,
+               &histRange, true, false);
 
   // --- Step 5: Normalize for comparability ---
   // Normalization ensures the comparison does not depend on image size.
@@ -167,25 +180,54 @@ auto ImageAnalyzer::compare_histogram() const -> std::string {
 
   // --- Step 6: Compute similarity metrics ---
   // Multiple metrics give more insight about the histogram similarity.
+  //
+  // Methods:
+  //
+  // cv::HISTCMP_CORREL - It measures the correlation between the two
+  // histograms. Highest value → Highest similarity (1.0 for identical).
+  //
+  // cv::HISTCMP_CHISQR - Calculates the Chi-square distance.
+  // Smaller value → Greater similarity (0.0 for identical histograms).
+  //
+  // cv::HISTCMP_INTERSECT - Calculates the sum of the minima in each bin
+  // of the histograms. Highest value → Highest similarity (equal to the total
+  // number of pixels if the histograms are normalized or identical).
+  //
+  // cv::HISTCMP_BHATTACHARYYA - Measures the distance between the two
+  // distributions. Also known as Hellinger Distance.
+  // Smaller value → Greatersimilarity (0.0 for identical histograms).
+  //
+  // cv::HISTCMP_KL_DIV - It measures how different one distribution is from
+  // another. Lower value → Greater similarity (0.0 for identical histograms).
+  //
   double corr = cv::compareHist(hist1, hist2, cv::HISTCMP_CORREL);
   double chisq = cv::compareHist(hist1, hist2, cv::HISTCMP_CHISQR);
   double inter = cv::compareHist(hist1, hist2, cv::HISTCMP_INTERSECT);
   double bhatt = cv::compareHist(hist1, hist2, cv::HISTCMP_BHATTACHARYYA);
+  double kldiv = cv::compareHist(hist1, hist2, cv::HISTCMP_KL_DIV);
 
   // --- Step 7: Build output string ---
   std::ostringstream oss;
   oss << "[Histogram]\n";
-  oss << "Correlation:       " << corr << "\n";
-  oss << "Chi-Square:        " << chisq << "\n";
-  oss << "Intersection:      " << inter << "\n";
-  oss << "Bhattacharyya:     " << bhatt << "\n";
+  oss << "Correlation:      " << corr
+      << (corr > 0.9    ? "  (IDENTICAL)"
+          : corr < -0.9 ? "  (INVERSE)"
+          : corr < -0.5 ? "  (ANTI-CORRELATED)"
+          : corr < 0.2  ? "  (NO CORRELATION)"
+          : corr < 0.5  ? "  (WEAK)"
+                        : "  (SIMILAR)")
+      << "\n";
+  oss << "Chi-Square:       " << chisq << "\n";
+  oss << "Intersection:     " << inter << "\n";
+  oss << "Bhattacharyya:    " << bhatt << "\n";
+  oss << "Kullback-Leibler: " << kldiv << "\n";
 
   // --- Step 8: Basic interpretation based on correlation value ---
   oss << "Histogram Correlation: " << std::format("{:.4f}", corr) << "\n";
 
   oss << "Similarity Score: " << std::format("{:.2f}%", corr * 100.0) << "\n";
 
-  oss << "Interpretation: ";
+  oss << "\nInterpretation: ";
   if (corr > 0.85)
     oss << "Histograms are nearly identical";
   else if (corr > 0.50)
@@ -198,6 +240,159 @@ auto ImageAnalyzer::compare_histogram() const -> std::string {
     oss << "Moderate inverse relation";
   else
     oss << "Histograms are inverses of each other";
+
+  oss << "\n";
+
+  return oss.str();
+}
+
+auto ImageAnalyzer::compare_structural() const -> std::string {
+
+  // --- Step 1: Basic validation ---
+  if (image1_.empty() || image2_.empty()) {
+    return "[Structural]\nFailed: One or both images are not loaded.\n";
+  }
+
+  // --- Step 2: Convert safely to grayscale ---
+  if (grayscale1_.empty() || grayscale2_.empty()) {
+    return "[Structural]\nFailed: One or both images were not converted to "
+           "grayscale.\n";
+  }
+
+  // --- Step 3: Resize if needed (SSIM requires same size) ---
+  if (grayscale1_.size() != grayscale2_.size()) {
+    cv::resize(grayscale2_, grayscale2_, grayscale1_.size(), 0, 0,
+               cv::INTER_AREA);
+  }
+
+  // --- Step 4: Compute MSE (Mean Squared Error) ---
+  // It measures the gross difference between the pixels of the two images.
+  cv::Mat diff;
+  cv::absdiff(grayscale1_, grayscale2_, diff);
+  diff.convertTo(diff, CV_32F);
+  diff = diff.mul(diff);
+
+  double mse = cv::sum(diff)[0] / static_cast<double>(grayscale1_.total());
+
+  // --- Step 5: Compute PSNR (Peak Signal-to-Noise Ratio) ---
+  // PSNR is directly derived from MSE and measures how "noisy" image 2 is
+  // compared to image 1.
+  double psnr = (mse == 0.0) ? 99.0 : 10.0 * std::log10((255.0 * 255.0) / mse);
+
+  // --- Step 6: Compute SSIM (Structural Similarity Index) ---
+  // It measures perceptual similarity, based on brightness, contrast, and
+  // structure.
+  auto ssim = [](const cv::Mat &i1, const cv::Mat &i2) -> double {
+    const double C1 = 6.5025;
+    const double C2 = 58.5225;
+
+    cv::Mat I1, I2;
+    i1.convertTo(I1, CV_32F);
+    i2.convertTo(I2, CV_32F);
+
+    cv::Mat mu1, mu2;
+    cv::GaussianBlur(I1, mu1, cv::Size(11, 11), 1.5);
+    cv::GaussianBlur(I2, mu2, cv::Size(11, 11), 1.5);
+
+    cv::Mat mu1_2 = mu1.mul(mu1);
+    cv::Mat mu2_2 = mu2.mul(mu2);
+    cv::Mat mu1_mu2 = mu1.mul(mu2);
+
+    cv::Mat sigma1_2, sigma2_2, sigma12;
+
+    cv::GaussianBlur(I1.mul(I1), sigma1_2, cv::Size(11, 11), 1.5);
+    cv::GaussianBlur(I2.mul(I2), sigma2_2, cv::Size(11, 11), 1.5);
+    cv::GaussianBlur(I1.mul(I2), sigma12, cv::Size(11, 11), 1.5);
+
+    sigma1_2 -= mu1_2;
+    sigma2_2 -= mu2_2;
+    sigma12 -= mu1_mu2;
+
+    cv::Mat t1 = (2.0 * mu1_mu2 + C1);
+    cv::Mat t2 = (2.0 * sigma12 + C2);
+    cv::Mat t3 = (mu1_2 + mu2_2 + C1);
+    cv::Mat t4 = (sigma1_2 + sigma2_2 + C2);
+
+    cv::Mat ssim_map;
+    cv::divide(t1.mul(t2), t3.mul(t4), ssim_map);
+
+    return cv::mean(ssim_map)[0];
+  };
+
+  double ssim_value = ssim(grayscale1_, grayscale2_);
+
+  // --- Step 7: Build output string ---
+  std::string mse_quality;
+  if (mse == 0.0) {
+    mse_quality = "Perfect match (no error)";
+  } else if (mse < 10.0) {
+    mse_quality = "Very small error (excellent similarity)";
+  } else if (mse < 50.0) {
+    mse_quality = "Small error (good similarity)";
+  } else if (mse < 200.0) {
+    mse_quality = "Moderate error (visible differences)";
+  } else {
+    mse_quality = "High error (images differ strongly)";
+  }
+
+  std::string psnr_quality;
+  if (!std::isfinite(psnr)) {
+    psnr_quality = "Infinite (perfect reconstruction)";
+  } else if (psnr > 40.0) {
+    psnr_quality = "Excellent (visually identical or extremely similar)";
+  } else if (psnr > 30.0) {
+    psnr_quality = "Good (small differences)";
+  } else if (psnr > 20.0) {
+    psnr_quality = "Fair (perceptible degradation)";
+  } else {
+    psnr_quality = "Poor (noticeable noise or distortion)";
+  }
+
+  std::string ssim_quality;
+  if (ssim_value > 0.95) {
+    ssim_quality = "Excellent structural similarity";
+  } else if (ssim_value > 0.80) {
+    ssim_quality = "High similarity";
+  } else if (ssim_value > 0.60) {
+    ssim_quality = "Partial similarity (structure differs)";
+  } else if (ssim_value > 0.0) {
+    ssim_quality = "Low similarity (different structure)";
+  } else {
+    ssim_quality = "Possible negative correlation or inversion";
+  }
+
+  // Extra detection: strong structural inversion indicator
+  bool is_inverse = (ssim_value < 0.0 && mse > 200.0);
+
+  // Formatting output information
+  std::ostringstream oss;
+  oss << "[Structural]\n";
+  oss << "MSE  : " << mse << "   --> " << mse_quality << "\n";
+  oss << "PSNR : " << psnr << " dB --> " << psnr_quality << "\n";
+  oss << "SSIM : " << ssim_value << "   --> " << ssim_quality << "\n";
+
+  if (is_inverse) {
+    oss << "\nDetection: Strong indicators of INVERSION between the "
+           "images.\n";
+  }
+
+  oss << "\nLegend:\n"
+      << " - MSE  (0=perfect)\n"
+      << " - PSNR (>40dB excellent)\n"
+      << " - SSIM (1.0 perfect, <0 possible inversion)\n";
+
+  // --- Step 8: Interpretation ---
+  oss << "\nInterpretation: ";
+  if (ssim_value > 0.95)
+    oss << "Images are structurally identical";
+  else if (ssim_value > 0.75)
+    oss << "Strong structural similarity";
+  else if (ssim_value > 0.40)
+    oss << "Moderate structural similarity";
+  else if (ssim_value > 0.10)
+    oss << "Weak similarity";
+  else
+    oss << "Images are structurally different";
 
   oss << "\n";
 
@@ -238,6 +433,7 @@ auto ImageAnalyzer::export_report(
   oss << compare_basic() << "\n";
   oss << compare_color_space() << "\n";
   oss << compare_histogram() << "\n";
+  oss << compare_structural() << "\n";
 
   // Footer
   oss << "----------------------------------------\n";
