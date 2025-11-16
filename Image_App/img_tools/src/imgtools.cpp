@@ -465,6 +465,24 @@ auto imgtools::ImageAnalyzer::compare_features(FeatureMethod method) const
   };
 
   // Step 2: Feature detector/descriptor selection
+  //
+  // ORB (Oriented FAST and Rotated BRIEF)
+  // It combines the speed of FAST (Features from Accelerated Segment Test) with
+  // the efficiency of BRIEF (Binary Robust Independent Elementary Features)
+  // descriptors, adding invariance to the rotation.
+  // Extremely fast and efficient in terms of computing and memory. It is less
+  // robust to scale and lighting variations than SIFT.
+  //
+  // AKAZE (Accelerated-KAZE) - Recommended method by default
+  // It uses nonlinear diffusion filtering (instead of Gaussians) to construct
+  // the scaling pyramids.
+  // A modern detector that addresses the limitations of traditional methods in
+  // a way that is scalable and rotation-invariant.
+  //
+  // SIFT (Scale-Invariant Feature Transform)
+  // It detects features that are invariant to scale and invariant to rotation.
+  // Very robust and accurate, but relatively slow.
+  //
   cv::Ptr<cv::Feature2D> detector;
 
   switch (method) {
@@ -484,6 +502,8 @@ auto imgtools::ImageAnalyzer::compare_features(FeatureMethod method) const
     break;
   }
 
+  // Hamming Distance
+  // Similarity metric for comparing binary feature descriptors
   bool useHamming =
       (method == FeatureMethod::ORB || method == FeatureMethod::AKAZE);
 
@@ -493,9 +513,10 @@ auto imgtools::ImageAnalyzer::compare_features(FeatureMethod method) const
                 cv::DescriptorMatcher::BRUTEFORCE_HAMMING)
           : cv::DescriptorMatcher::create(cv::DescriptorMatcher::FLANNBASED);
 
-  std::vector<cv::KeyPoint> kp1, kp2;
-  cv::Mat desc1, desc2;
+  std::vector<cv::KeyPoint> kp1, kp2; // keypoints
+  cv::Mat desc1, desc2;               // descriptors
 
+  // Detects keypoints and computes the descriptors
   detector->detectAndCompute(grayscale1_, cv::noArray(), kp1, desc1);
   detector->detectAndCompute(grayscale2_, cv::noArray(), kp2, desc2);
 
