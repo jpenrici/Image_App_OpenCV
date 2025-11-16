@@ -128,22 +128,54 @@ public:
     [[nodiscard]] auto compare_structural() const -> std::string;
 
     /**
-     * @brief Feature-based comparison using local descriptors.
+     * @brief Methods available for local feature detection and description.
      *
-     * Typically uses ORB keypoints:
-     *  - Detects keypoints in both images.
-     *  - Computes descriptors.
-     *  - Matches descriptors using Hamming distance.
-     *  - Reports match count, inliers, and confidence score.
-     *
-     * Useful for detecting:
-     *  - Similar objects under different lighting
-     *  - Transformed images
-     *  - Partially overlapping content
-     *
-     * @return Human-readable feature matching summary.
+     * ORB  - Fast, efficient, binary descriptors. Works well for real-time tasks.
+     * AKAZE - Nonlinear scale space; robust, stable, excellent for general matching.
+     * SIFT - High-accuracy float descriptors; best for reliability, slower.
      */
-    [[nodiscard]] auto compare_features() const -> std::string;  ////////// TO DO
+    enum class FeatureMethod { ORB, AKAZE, SIFT };
+
+    /**
+     * @brief Feature-based comparison using local keypoint descriptors.
+     *
+     * This function extracts local features from both images using the selected
+     * detection/description method and evaluates their structural similarity.
+     *
+     * Supported algorithms:
+     *  - ORB   (binary, fast, NORM_HAMMING)
+     *  - AKAZE (binary, robust, NORM_HAMMING)
+     *  - SIFT  (float descriptors, high accuracy, NORM_L2)
+     *
+     * Processing pipeline:
+     *  1. Detect keypoints in each image.
+     *  2. Compute local descriptors.
+     *  3. Perform KNN descriptor matching (k = 2).
+     *  4. Apply the Lowe ratio test to filter ambiguous matches.
+     *  5. Estimate geometric consistency using RANSAC homography.
+     *  6. Classify transformation type (affine / perspective).
+     *  7. Compute match confidence metrics:
+     *        - Inlier/Outlier ratio
+     *        - Average match distance
+     *        - Variance of distances
+     *        - Mean Lowe ratio
+     *  8. Generate a human-readable textual summary of similarity.
+     *
+     * Typical use cases:
+     *  - Detecting geometric transformations (rotation, scaling, perspective)
+     *  - Comparing structural similarity between objects
+     *  - Matching images with different illumination or partial occlusion
+     *  - Validating whether two images represent the same scene
+     *
+     * Notes:
+     *  - Images are internally compared in grayscale.
+     *  - SIFT requires OpenCV built with the xfeatures2d contrib module.
+     *  - A minimum of 4 matches after filtering is required for homography.
+     *
+     * @param method Feature extraction method (ORB, AKAZE, or SIFT).
+     * @return String containing a detailed feature-matching report.
+     */
+    [[nodiscard]] auto compare_features(FeatureMethod method = FeatureMethod::AKAZE) const -> std::string;
 
     /**
      * @brief Exports the combined comparison report into a text file.
@@ -158,12 +190,14 @@ public:
      * @param output_path Path to write the report to.
      * @return true if successful, false if file could not be written.
      */
-    auto export_report(const std::filesystem::path& output_path) const -> bool;
+    auto export_report(const std::filesystem::path& output_path,
+                       FeatureMethod method = FeatureMethod::AKAZE) const -> bool;
 
     /**
      * @brief Convenience overload for export_report().
      */
-    auto export_report(std::string_view output_path) -> bool;
+    auto export_report(std::string_view output_path,
+                       FeatureMethod method = FeatureMethod::AKAZE) -> bool;
 
     /**
      * @brief Returns the loaded full-color images.

@@ -90,8 +90,17 @@ auto ImageAnalyzer::compare_basic() const -> std::string {
   oss << "Extension match: " << std::boolalpha << (ext1 == ext2) << "\n";
 
   // Compare file sizes.
-  auto size1 = std::filesystem::file_size(path1_);
-  auto size2 = std::filesystem::file_size(path2_);
+  unsigned long size1{0};
+  unsigned long size2{0};
+
+  if (std::filesystem::exists(path1_)) {
+    size1 = std::filesystem::file_size(path1_);
+  }
+
+  if (std::filesystem::exists(path2_)) {
+    size2 = std::filesystem::file_size(path2_);
+  }
+
   oss << "File size 1: " << size1 << " bytes\n";
   oss << "File size 2: " << size2 << " bytes\n";
   oss << "Size difference: "
@@ -259,16 +268,19 @@ auto ImageAnalyzer::compare_structural() const -> std::string {
            "grayscale.\n";
   }
 
+  // Bkp
+  cv::Mat gray1 = grayscale1_;
+  cv::Mat gray2 = grayscale2_;
+
   // --- Step 3: Resize if needed (SSIM requires same size) ---
-  if (grayscale1_.size() != grayscale2_.size()) {
-    cv::resize(grayscale2_, grayscale2_, grayscale1_.size(), 0, 0,
-               cv::INTER_AREA);
+  if (gray1.size() != gray2.size()) {
+    cv::resize(gray1, gray2, gray1.size(), 0, 0, cv::INTER_AREA);
   }
 
   // --- Step 4: Compute MSE (Mean Squared Error) ---
   // It measures the gross difference between the pixels of the two images.
   cv::Mat diff;
-  cv::absdiff(grayscale1_, grayscale2_, diff);
+  cv::absdiff(gray1, gray2, diff);
   diff.convertTo(diff, CV_32F);
   diff = diff.mul(diff);
 
@@ -319,7 +331,7 @@ auto ImageAnalyzer::compare_structural() const -> std::string {
     return cv::mean(ssim_map)[0];
   };
 
-  double ssim_value = ssim(grayscale1_, grayscale2_);
+  double ssim_value = ssim(gray1, gray2);
 
   // --- Step 7: Build output string ---
   std::string mse_quality;
@@ -399,9 +411,187 @@ auto ImageAnalyzer::compare_structural() const -> std::string {
   return oss.str();
 }
 
+auto imgtools::ImageAnalyzer::compare_features(FeatureMethod method) const
+    -> std::string {
+
+  std::ostringstream oss;
+  oss << "[Feature Matching]\n";
+
+  // --- Step 1: Validate grayscale conversion ---
+  if (grayscale1_.empty() || grayscale2_.empty()) {
+    oss << "Error: Images not loaded.\n";
+    return oss.str();
+  }
+
+  // --- Auxiliary Function : Homography classification ---
+  auto classifyHomography = [](const cv::Mat &H) -> std::string {
+    if (H.empty())
+      return "None";
+
+    double p0 = std::abs(H.at<double>(2, 0));
+    double p1 = std::abs(H.at<double>(2, 1));
+
+    if (p0 < 1e-3 && p1 < 1e-3)
+      return "Affine/Similarity";
+    return "Perspective";
+  };
+
+  // --- Auxiliary Function : Quality based on inlier ratio ---
+  auto qualityLabel = [](double r) -> std::string {
+    if (r > 0.60)
+      return "GOOD";
+    if (r > 0.30)
+      return "MODERATE";
+    return "POOR";
+  };
+
+  // --- Auxiliary Function : Mean and variance ---
+  auto mean = [](const std::vector<double> &v) -> double {
+    if (v.empty())
+      return 0.0;
+    double s = 0.0;
+    for (double x : v)
+      s += x;
+    return s / v.size();
+  };
+
+  auto variance = [](const std::vector<double> &v, double m) -> double {
+    if (v.size() < 2)
+      return 0.0;
+    double sum = 0.0;
+    for (double x : v)
+      sum += (x - m) * (x - m);
+    return sum / (v.size() - 1);
+  };
+
+  // Step 2: Feature detector/descriptor selection
+  cv::Ptr<cv::Feature2D> detector;
+
+  switch (method) {
+  case FeatureMethod::ORB:
+    detector = cv::ORB::create(1500); // FAST + BRIEF (binary)
+    oss << "Method: ORB\n";
+    break;
+
+  case FeatureMethod::AKAZE:
+    detector = cv::AKAZE::create(); // nonlinear scale space
+    oss << "Method: AKAZE\n";
+    break;
+
+  case FeatureMethod::SIFT:
+    detector = cv::SIFT::create(1200); // gradient-based, float descriptors
+    oss << "Method: SIFT\n";
+    break;
+  }
+
+  bool useHamming =
+      (method == FeatureMethod::ORB || method == FeatureMethod::AKAZE);
+
+  cv::Ptr<cv::DescriptorMatcher> matcher =
+      useHamming
+          ? cv::DescriptorMatcher::create(
+                cv::DescriptorMatcher::BRUTEFORCE_HAMMING)
+          : cv::DescriptorMatcher::create(cv::DescriptorMatcher::FLANNBASED);
+
+  std::vector<cv::KeyPoint> kp1, kp2;
+  cv::Mat desc1, desc2;
+
+  detector->detectAndCompute(grayscale1_, cv::noArray(), kp1, desc1);
+  detector->detectAndCompute(grayscale2_, cv::noArray(), kp2, desc2);
+
+  oss << "Keypoints Image 1: " << kp1.size() << "\n";
+  oss << "Keypoints Image 2: " << kp2.size() << "\n";
+
+  if (kp1.empty() || kp2.empty() || desc1.empty() || desc2.empty()) {
+    oss << "Error: Could not compute descriptors.\n";
+    return oss.str();
+  }
+
+  // Step 3: KNN matching + Lowe ratio test
+  std::vector<std::vector<cv::DMatch>> knnMatches;
+  matcher->knnMatch(desc1, desc2, knnMatches, 2);
+
+  std::vector<cv::DMatch> goodMatches;
+  std::vector<double> ratios;
+  std::vector<double> distances;
+
+  const float ratioThresh = 0.75f;
+
+  for (auto &pair : knnMatches) {
+    if (pair.size() < 2)
+      continue;
+
+    float r = pair[0].distance / pair[1].distance;
+    if (r < ratioThresh) {
+      goodMatches.push_back(pair[0]);
+      ratios.push_back(r);
+      distances.push_back(pair[0].distance);
+    }
+  }
+
+  oss << "Good Matches: " << goodMatches.size() << "\n";
+
+  if (goodMatches.size() < 4) {
+    oss << "Not enough matches for homography.\n";
+    return oss.str();
+  }
+
+  // Step 4: Compute Homography with RANSAC
+  std::vector<cv::Point2f> pts1, pts2;
+  for (auto &m : goodMatches) {
+    pts1.push_back(kp1[m.queryIdx].pt);
+    pts2.push_back(kp2[m.trainIdx].pt);
+  }
+
+  std::vector<unsigned char> inlierMask;
+  cv::Mat H = cv::findHomography(pts1, pts2, cv::RANSAC, 3.0, inlierMask);
+
+  int inliers = std::count(inlierMask.begin(), inlierMask.end(), 1);
+  int outliers = goodMatches.size() - inliers;
+  double inlierRatio = (double)inliers / goodMatches.size();
+
+  // Step 5: Report RANSAC results
+  oss << "\n[RANSAC]\n";
+  oss << "Inliers: " << inliers << "\n";
+  oss << "Outliers: " << outliers << "\n";
+  oss << "Inlier Ratio: " << inlierRatio << " (" << qualityLabel(inlierRatio)
+      << ")\n";
+
+  // Step 6: Homography details
+  oss << "\n[Homography]\n";
+  if (!H.empty()) {
+    oss << "Status: FOUND\n";
+    oss << "Type: " << classifyHomography(H) << "\n";
+    oss << "Determinant: " << std::abs(cv::determinant(H)) << "\n";
+  } else {
+    oss << "Status: NOT FOUND\n";
+  }
+
+  // Step 7: Match confidence metrics
+  double meanDist = mean(distances);
+  double varDist = variance(distances, meanDist);
+  double meanRatio = mean(ratios);
+
+  oss << "\n[Match Confidence]\n";
+  oss << "Average Match Distance: " << meanDist << "\n";
+  oss << "Distance Variance: " << varDist << "\n";
+  oss << "Mean Lowe Ratio: " << meanRatio << "\n";
+
+  // Step 8: High-level interpretation
+  oss << "\n[Summary]\n";
+  if (inlierRatio > 0.60)
+    oss << "Images have STRONG structural similarity.\n";
+  else if (inlierRatio > 0.30)
+    oss << "Images have MODERATE similarity.\n";
+  else
+    oss << "Images are likely DIFFERENT.\n";
+
+  return oss.str();
+}
+
 // Export a detailed report with headers and separators.
-auto ImageAnalyzer::export_report(
-    const std::filesystem::path &output_path) const -> bool {
+auto ImageAnalyzer::export_report(const std::filesystem::path &output_path,
+                                  FeatureMethod method) const -> bool {
 
   std::string path{output_path};
   if (std::filesystem::path(output_path).extension() != ".txt") {
@@ -434,6 +624,7 @@ auto ImageAnalyzer::export_report(
   oss << compare_color_space() << "\n";
   oss << compare_histogram() << "\n";
   oss << compare_structural() << "\n";
+  oss << compare_features(method) << "\n";
 
   // Footer
   oss << "----------------------------------------\n";
@@ -445,8 +636,9 @@ auto ImageAnalyzer::export_report(
   return true;
 }
 
-auto ImageAnalyzer::export_report(std::string_view output_path) -> bool {
-  return export_report(std::filesystem::path(output_path));
+auto ImageAnalyzer::export_report(std::string_view output_path,
+                                  FeatureMethod method) -> bool {
+  return export_report(std::filesystem::path(output_path), method);
 }
 
 } // namespace imgtools
