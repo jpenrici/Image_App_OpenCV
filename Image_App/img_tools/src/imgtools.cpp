@@ -528,7 +528,8 @@ auto imgtools::ImageAnalyzer::compare_features(FeatureMethod method) const
     return oss.str();
   }
 
-  // Step 3: KNN matching + Lowe ratio test
+  // Step 3: KNN matching (K-Nearest Neighbors) + Lowe ratio test
+  // Finding reliable matches between the feature descriptors of two images
   std::vector<std::vector<cv::DMatch>> knnMatches;
   matcher->knnMatch(desc1, desc2, knnMatches, 2);
 
@@ -558,6 +559,14 @@ auto imgtools::ImageAnalyzer::compare_features(FeatureMethod method) const
   }
 
   // Step 4: Compute Homography with RANSAC
+  //
+  // Homography is a geometric transformation that maps points on a plane in one
+  // view to corresponding points on another plane in a second view.
+  //
+  // RANSAC (RANdom SAmple Consensus) is a robust iterative algorithm used to
+  // estimate parameters of a mathematical model from a dataset that contains
+  // noise and, more crucially, outliers (incorrect data).
+  //
   std::vector<cv::Point2f> pts1, pts2;
   for (auto &m : goodMatches) {
     pts1.push_back(kp1[m.queryIdx].pt);
