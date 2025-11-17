@@ -51,7 +51,7 @@ auto ImageAnalyzer::load_images() -> bool {
         cv::cvtColor(src, dst, cv::COLOR_BGRA2GRAY);
       } else {
         throw std::runtime_error(
-            "Unsupported number of channels for histogram.");
+            "Unsupported number of channels for grayscale conversion.");
       }
     };
 
@@ -61,7 +61,6 @@ auto ImageAnalyzer::load_images() -> bool {
     } catch (const std::exception &ex) {
       std::println("[Grayscale Conversion]\nError: {}", ex.what());
     }
-
     return true;
   }
 
@@ -79,9 +78,12 @@ auto ImageAnalyzer::paths() const
 
 // Compare file extension, file size, dimensions and channels.
 auto ImageAnalyzer::compare_basic() const -> std::string {
-  std::ostringstream oss;
 
+  std::ostringstream oss;
   oss << "[Basic Comparison]\n";
+  if (image1_.empty() || image2_.empty()) {
+    oss << "Warning: empty or unloaded images. Call load_images().\n";
+  }
 
   // Compare extensions.
   auto ext1 = path1_.extension().string();
@@ -89,16 +91,20 @@ auto ImageAnalyzer::compare_basic() const -> std::string {
   oss << "Extension 1: " << ext1 << "\n";
   oss << "Extension 2: " << ext2 << "\n";
   oss << "Extension match: " << std::boolalpha << (ext1 == ext2) << "\n";
+  if (ext1 != ext2) {
+    oss << "Note: file extensions differ — images may use different "
+           "encodings.\n";
+  }
 
   // Compare file sizes.
   unsigned long size1{0};
   unsigned long size2{0};
 
-  if (std::filesystem::exists(path1_)) {
+  if (std::filesystem::is_regular_file(path1_)) {
     size1 = std::filesystem::file_size(path1_);
   }
 
-  if (std::filesystem::exists(path2_)) {
+  if (std::filesystem::is_regular_file(path2_)) {
     size2 = std::filesystem::file_size(path2_);
   }
 
@@ -114,6 +120,8 @@ auto ImageAnalyzer::compare_basic() const -> std::string {
     oss << "Dimensions 2: " << image2_.cols << "x" << image2_.rows << "\n";
     oss << "Channels 1: " << image1_.channels() << "\n";
     oss << "Channels 2: " << image2_.channels() << "\n";
+    if (image1_.channels() != image2_.channels())
+      oss << "Note: differing number of channels affects comparisons.\n";
   } else {
     oss << "Images not loaded properly.\n";
   }
@@ -123,9 +131,10 @@ auto ImageAnalyzer::compare_basic() const -> std::string {
 
 // Simple color space analysis.
 auto ImageAnalyzer::compare_color_space() const -> std::string {
-  std::ostringstream oss;
 
+  std::ostringstream oss;
   oss << "[Color Space]\n";
+
   if (image1_.empty() || image2_.empty()) {
     oss << "Images not loaded.\n";
     return oss.str();
@@ -136,9 +145,9 @@ auto ImageAnalyzer::compare_color_space() const -> std::string {
     case 1:
       return "Grayscale";
     case 3:
-      return "RGB";
+      return "RGB"; // OpenCV - BGR
     case 4:
-      return "RGBA";
+      return "RGBA"; // OpenCV - BGRA
     default:
       return "Unknown";
     }
@@ -166,6 +175,7 @@ auto ImageAnalyzer::compute_histogram() const -> HistogramResult {
 
   // --- Step 2: Checks if the images have been converted to grayscale. ---
   if (grayscale1_.empty() || grayscale2_.empty()) {
+    std::println("[Histogram]\nError: grayscale images not computed.");
     return result;
   }
 
@@ -175,20 +185,18 @@ auto ImageAnalyzer::compute_histogram() const -> HistogramResult {
   const float *histRange = range;
   int channel = 0; // grayscale = single channel
 
-  cv::Mat hist1, hist2;
-
   // --- Step 4: Compute histograms ---
   // cv::calcHist creates a histogram using the selected channels and ranges.
-  cv::calcHist(&grayscale1_, 1, &channel, cv::Mat(), hist1, 1, &histSize,
+  cv::calcHist(&grayscale1_, 1, &channel, cv::Mat(), result.hist1, 1, &histSize,
                &histRange, true, false);
 
-  cv::calcHist(&grayscale2_, 1, &channel, cv::Mat(), hist2, 1, &histSize,
+  cv::calcHist(&grayscale2_, 1, &channel, cv::Mat(), result.hist2, 1, &histSize,
                &histRange, true, false);
 
   // --- Step 5: Normalize for comparability ---
   // Normalization ensures the comparison does not depend on image size.
-  cv::normalize(hist1, hist1, 0, 1, cv::NORM_MINMAX);
-  cv::normalize(hist2, hist2, 0, 1, cv::NORM_MINMAX);
+  cv::normalize(result.hist1, result.hist1, 0, 1, cv::NORM_MINMAX);
+  cv::normalize(result.hist2, result.hist2, 0, 1, cv::NORM_MINMAX);
 
   // --- Step 6: Compute similarity metrics ---
   // Multiple metrics give more insight about the histogram similarity.
@@ -212,14 +220,18 @@ auto ImageAnalyzer::compute_histogram() const -> HistogramResult {
   // cv::HISTCMP_KL_DIV - It measures how different one distribution is from
   // another. Lower value → Greater similarity (0.0 for identical histograms).
   //
-  result.correlation = cv::compareHist(hist1, hist2, cv::HISTCMP_CORREL);
-  result.chiSquare = cv::compareHist(hist1, hist2, cv::HISTCMP_CHISQR);
-  result.intersection = cv::compareHist(hist1, hist2, cv::HISTCMP_INTERSECT);
+  result.correlation =
+      cv::compareHist(result.hist1, result.hist2, cv::HISTCMP_CORREL);
+  result.chiSquare =
+      cv::compareHist(result.hist1, result.hist2, cv::HISTCMP_CHISQR);
+  result.intersection =
+      cv::compareHist(result.hist1, result.hist2, cv::HISTCMP_INTERSECT);
   result.bhattacharyya =
-      cv::compareHist(hist1, hist2, cv::HISTCMP_BHATTACHARYYA);
-  result.kldiv = cv::compareHist(hist1, hist2, cv::HISTCMP_KL_DIV);
+      cv::compareHist(result.hist1, result.hist2, cv::HISTCMP_BHATTACHARYYA);
+  result.kldiv =
+      cv::compareHist(result.hist1, result.hist2, cv::HISTCMP_KL_DIV);
 
-  return result; // result
+  return result;
 }
 
 auto ImageAnalyzer::summarize(const HistogramResult &r) const -> std::string {
@@ -267,7 +279,7 @@ auto ImageAnalyzer::summarize(const HistogramResult &r) const -> std::string {
 }
 
 auto ImageAnalyzer::compare_histogram() const -> std::string {
-  return summarize(HistogramResult());
+  return summarize(compute_histogram());
 }
 
 auto ImageAnalyzer::compute_structural() const -> StructuralResult {
@@ -286,27 +298,26 @@ auto ImageAnalyzer::compute_structural() const -> StructuralResult {
   }
 
   // Bkp
-  cv::Mat gray1 = grayscale1_;
-  cv::Mat gray2 = grayscale2_;
+  cv::Mat gray1 = grayscale1_.clone();
+  cv::Mat gray2 = grayscale2_.clone();
 
   // --- Step 3: Resize if needed (SSIM requires same size) ---
   if (gray1.size() != gray2.size()) {
-    cv::resize(gray1, gray2, gray1.size(), 0, 0, cv::INTER_AREA);
+    cv::resize(gray2, gray2, gray1.size(), 0, 0, cv::INTER_AREA);
   }
 
   // --- Step 4: Compute MSE (Mean Squared Error) ---
   // It measures the gross difference between the pixels of the two images.
-  cv::Mat diff;
-  cv::absdiff(gray1, gray2, diff);
-  diff.convertTo(diff, CV_32F);
-  diff = diff.mul(diff);
+  cv::absdiff(gray1, gray2, result.absDiff);
+  result.absDiff.convertTo(result.absDiff, CV_32F);
+  result.absDiff = result.absDiff.mul(result.absDiff);
 
-  result.mse = cv::sum(diff)[0] / static_cast<double>(gray1.total());
+  result.mse = cv::sum(result.absDiff)[0] / static_cast<double>(gray1.total());
 
   // --- Step 5: Compute PSNR (Peak Signal-to-Noise Ratio) ---
   // PSNR is directly derived from MSE and measures how "noisy" image 2 is
   // compared to image 1.
-  double psnr = (result.mse == 0.0)
+  result.psnr = (result.mse == 0.0)
                     ? 99.0
                     : 10.0 * std::log10((255.0 * 255.0) / result.mse);
 
@@ -428,7 +439,7 @@ auto ImageAnalyzer::summarize(const StructuralResult &r) const -> std::string {
 }
 
 auto ImageAnalyzer::compare_structural() const -> std::string {
-  return {summarize(StructuralResult())};
+  return summarize(compute_structural());
 }
 
 auto ImageAnalyzer::compute_features(FeatureMethod method) const
@@ -495,6 +506,11 @@ auto ImageAnalyzer::compute_features(FeatureMethod method) const
   detector->detectAndCompute(grayscale2_, cv::noArray(), result.keypoints2,
                              result.descriptors2);
 
+  if (!useHamming) {
+    result.descriptors1.convertTo(result.descriptors1, CV_32F);
+    result.descriptors2.convertTo(result.descriptors2, CV_32F);
+  }
+
   if (result.keypoints1.empty() || result.keypoints2.empty())
     return result;
 
@@ -515,7 +531,10 @@ auto ImageAnalyzer::compute_features(FeatureMethod method) const
     if (pair.size() < 2)
       continue;
 
+    if (pair[1].distance < 1e-6)
+      continue;
     float r = pair[0].distance / pair[1].distance;
+
     if (r < ratioThresh) {
       result.matches.push_back(pair[0]);
       ratios.push_back(r);
@@ -542,12 +561,13 @@ auto ImageAnalyzer::compute_features(FeatureMethod method) const
     pts2.push_back(result.keypoints2[m.trainIdx].pt);
   }
 
-  std::vector<unsigned char> inlierMask;
-  cv::Mat H = cv::findHomography(pts1, pts2, cv::RANSAC, 3.0, inlierMask);
+  result.homography =
+      cv::findHomography(pts1, pts2, cv::RANSAC, 3.0, result.inliersMask);
 
-  int inliersCount = std::count(inlierMask.begin(), inlierMask.end(), 1);
-  result.inlierRatio =
-      static_cast<double>(inliersCount / result.matches.size());
+  int inliersCount =
+      std::count(result.inliersMask.begin(), result.inliersMask.end(), 1);
+  result.inlierRatio = static_cast<double>(inliersCount) /
+                       static_cast<double>(result.matches.size());
 
   // --- Auxiliary Function : Mean and variance ---
   auto mean = [&](const std::vector<double> &v) {
@@ -648,7 +668,7 @@ auto ImageAnalyzer::summarize(const FeatureResult &r) const -> std::string {
 
 auto ImageAnalyzer::compare_features(FeatureMethod method) const
     -> std::string {
-  return summarize(FeatureResult());
+  return summarize(compute_features(method));
 }
 
 // Export a detailed report with headers and separators.
