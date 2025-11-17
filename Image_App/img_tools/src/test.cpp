@@ -97,8 +97,7 @@ auto test_structural(imgtools::ImageAnalyzer &img) -> std::string {
   return oss.str();
 }
 
-auto test_features(imgtools::ImageAnalyzer &img,
-                   imgtools::ImageAnalyzer::FeatureMethod method)
+auto test_features(imgtools::ImageAnalyzer &img, imgtools::FeatureMethod method)
     -> std::string {
   std::ostringstream oss;
   oss << "---- Features Analysis ----\n";
@@ -108,8 +107,7 @@ auto test_features(imgtools::ImageAnalyzer &img,
 }
 
 void analyze(std::pair<std::string_view, std::string_view> paths,
-             imgtools::ImageAnalyzer::FeatureMethod method =
-                 imgtools::ImageAnalyzer::FeatureMethod::AKAZE) {
+             imgtools::FeatureMethod method = imgtools::FeatureMethod::AKAZE) {
 
   auto [path1, path2] = paths;
   imgtools::ImageAnalyzer iia(path1, path2);
@@ -162,8 +160,7 @@ void test() {
   // Test - similar images
   check("img6.png", "img7.png");
 
-  analyze({fpath("img7.png"), fpath("img6.png")},
-          imgtools::ImageAnalyzer::FeatureMethod::ORB);
+  analyze({fpath("img7.png"), fpath("img6.png")}, imgtools::FeatureMethod::ORB);
 
   std::println("Test completed.");
 }

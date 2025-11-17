@@ -9,6 +9,70 @@
 namespace imgtools {
 
 /**
+* @brief Methods available for local feature detection and description.
+*
+* ORB  - Fast, efficient, binary descriptors. Works well for real-time tasks.
+* AKAZE - Nonlinear scale space; robust, stable, excellent for general matching.
+* SIFT - High-accuracy float descriptors; best for reliability, slower.
+*/
+enum class FeatureMethod { ORB, AKAZE, SIFT };
+
+/**
+ * @brief Histogram comparison result.
+ */
+struct HistogramResult {
+    cv::Mat hist1;
+    cv::Mat hist2;
+
+    double correlation = 0.0;
+    double chiSquare = 0.0;
+    double intersection = 0.0;
+    double bhattacharyya = 0.0;
+    double kldiv = 0.0;
+};
+
+/**
+ * @brief Structural comparison result (MSE/PSNR/SSIM).
+ */
+struct StructuralResult {
+    double mse = 0.0;
+    double psnr = 0.0;
+    double ssim = 0.0;
+
+    cv::Mat ssimMap;
+    cv::Mat absDiff;
+};
+
+/**
+ * @brief Feature-based analysis result.
+ *
+ * Contains raw data that the GUI can visualize:
+ *  - Keypoints
+ *  - Descriptors
+ *  - Good matches
+ *  - Inlier mask (from RANSAC)
+ *  - Homography matrix if found
+ */
+struct FeatureResult {
+    std::vector<cv::KeyPoint> keypoints1;
+    std::vector<cv::KeyPoint> keypoints2;
+
+    cv::Mat descriptors1;
+    cv::Mat descriptors2;
+
+    std::vector<cv::DMatch> matches;
+    std::vector<char> inliersMask;
+
+    cv::Mat homography;
+    FeatureMethod method = FeatureMethod::AKAZE;
+
+    double inlierRatio = 0.0;
+    double meanDistance = 0.0;
+    double distanceVariance = 0.0;
+    double meanRatio = 0.0;
+};
+
+/**
  * @class ImageAnalyzer
  * @brief Utility class for performing multiple image comparison techniques.
  *
@@ -54,7 +118,7 @@ public:
      * @return true if both files exist and were loaded correctly,
      *         false otherwise.
      */
-    [[nodiscard]] auto load_images() noexcept -> bool;
+    [[nodiscard]] auto load_images() -> bool;
 
     /**
      * @brief Performs basic comparison between images.
@@ -85,6 +149,19 @@ public:
     [[nodiscard]] auto compare_color_space() const -> std::string;
 
     /**
+     * @brief compute_histogram
+     * @return
+     */
+    [[nodiscard]] auto compute_histogram() const -> HistogramResult;
+
+    /**
+     * @brief summarize
+     * @param r
+     * @return
+     */
+    [[nodiscard]] auto summarize(const HistogramResult& r) const -> std::string;
+
+    /**
      * @brief Compares grayscale histograms between the two images.
      *
      * Computes:
@@ -99,6 +176,19 @@ public:
      * @return Detailed histogram similarity analysis.
      */
     [[nodiscard]] auto compare_histogram() const -> std::string;
+
+    /**
+     * @brief compute_structural
+     * @return
+     */
+    [[nodiscard]] auto compute_structural() const -> StructuralResult;
+
+    /**
+     * @brief summarize
+     * @param r
+     * @return
+     */
+    [[nodiscard]] auto summarize(const StructuralResult& r) const -> std::string;
 
     /**
      * @brief Structural similarity comparison.
@@ -128,13 +218,18 @@ public:
     [[nodiscard]] auto compare_structural() const -> std::string;
 
     /**
-     * @brief Methods available for local feature detection and description.
-     *
-     * ORB  - Fast, efficient, binary descriptors. Works well for real-time tasks.
-     * AKAZE - Nonlinear scale space; robust, stable, excellent for general matching.
-     * SIFT - High-accuracy float descriptors; best for reliability, slower.
+     * @brief compute_features
+     * @param method
+     * @return
      */
-    enum class FeatureMethod { ORB, AKAZE, SIFT };
+    [[nodiscard]] auto compute_features(FeatureMethod method) const -> FeatureResult;
+
+    /**
+     * @brief summarize
+     * @param r
+     * @return
+     */
+    [[nodiscard]] auto summarize(const FeatureResult& r) const -> std::string;
 
     /**
      * @brief Feature-based comparison using local keypoint descriptors.
@@ -214,12 +309,12 @@ public:
     auto paths() const -> std::pair<std::filesystem::path, std::filesystem::path>;
 
 private:
-    cv::Mat image1_;       //!< Original first image.
-    cv::Mat image2_;       //!< Original second image.
-    cv::Mat grayscale1_;   //!< Grayscale version of first image.
-    cv::Mat grayscale2_;   //!< Grayscale version of second image.
-    std::filesystem::path path1_; //!< Path to first image.
-    std::filesystem::path path2_; //!< Path to second image.
+    cv::Mat image1_;       // Original first image.
+    cv::Mat image2_;       // Original second image.
+    cv::Mat grayscale1_;   // Grayscale version of first image.
+    cv::Mat grayscale2_;   // Grayscale version of second image.
+    std::filesystem::path path1_; // Path to first image.
+    std::filesystem::path path2_; // Path to second image.
 };
 
 // --- Helper functions ---

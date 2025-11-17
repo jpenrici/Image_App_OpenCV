@@ -2,6 +2,7 @@
 
 #include <chrono>
 #include <fstream>
+#include <numeric>
 #include <print>
 #include <sstream>
 
@@ -31,7 +32,7 @@ ImageAnalyzer::ImageAnalyzer(std::string_view path1,
     : path1_(path1), path2_(path2) {}
 
 // Load both images safely.
-auto ImageAnalyzer::load_images() noexcept -> bool {
+auto ImageAnalyzer::load_images() -> bool {
   // Load
   image1_ = cv::imread(path1_.string(), cv::IMREAD_UNCHANGED);
   image2_ = cv::imread(path2_.string(), cv::IMREAD_UNCHANGED);
@@ -153,17 +154,19 @@ auto ImageAnalyzer::compare_color_space() const -> std::string {
   return oss.str();
 }
 
-auto ImageAnalyzer::compare_histogram() const -> std::string {
+auto ImageAnalyzer::compute_histogram() const -> HistogramResult {
+
+  // Initialize
+  HistogramResult result;
 
   // --- Step 1: Validate images ---
   if (image1_.empty() || image2_.empty()) {
-    return "[Histogram]\nFailed: One or both images are not loaded.\n";
+    return result;
   }
 
-  // --- Step 2: Convert safely to grayscale ---
+  // --- Step 2: Checks if the images have been converted to grayscale. ---
   if (grayscale1_.empty() || grayscale2_.empty()) {
-    return "[Histogram]\nFailed: One or both images were not converted to "
-           "grayscale.\n";
+    return result;
   }
 
   // --- Step 3: Histogram configuration (1D grayscale) ---
@@ -209,43 +212,51 @@ auto ImageAnalyzer::compare_histogram() const -> std::string {
   // cv::HISTCMP_KL_DIV - It measures how different one distribution is from
   // another. Lower value → Greater similarity (0.0 for identical histograms).
   //
-  double corr = cv::compareHist(hist1, hist2, cv::HISTCMP_CORREL);
-  double chisq = cv::compareHist(hist1, hist2, cv::HISTCMP_CHISQR);
-  double inter = cv::compareHist(hist1, hist2, cv::HISTCMP_INTERSECT);
-  double bhatt = cv::compareHist(hist1, hist2, cv::HISTCMP_BHATTACHARYYA);
-  double kldiv = cv::compareHist(hist1, hist2, cv::HISTCMP_KL_DIV);
+  result.correlation = cv::compareHist(hist1, hist2, cv::HISTCMP_CORREL);
+  result.chiSquare = cv::compareHist(hist1, hist2, cv::HISTCMP_CHISQR);
+  result.intersection = cv::compareHist(hist1, hist2, cv::HISTCMP_INTERSECT);
+  result.bhattacharyya =
+      cv::compareHist(hist1, hist2, cv::HISTCMP_BHATTACHARYYA);
+  result.kldiv = cv::compareHist(hist1, hist2, cv::HISTCMP_KL_DIV);
 
-  // --- Step 7: Build output string ---
+  return result; // result
+}
+
+auto ImageAnalyzer::summarize(const HistogramResult &r) const -> std::string {
+  // --- Build output string ---
   std::ostringstream oss;
+
   oss << "[Histogram]\n";
-  oss << "Correlation:      " << corr
-      << (corr > 0.9    ? "  (IDENTICAL)"
-          : corr < -0.9 ? "  (INVERSE)"
-          : corr < -0.5 ? "  (ANTI-CORRELATED)"
-          : corr < 0.2  ? "  (NO CORRELATION)"
-          : corr < 0.5  ? "  (WEAK)"
-                        : "  (SIMILAR)")
+  oss << "Correlation:      " << r.correlation
+      << (r.correlation > 0.9    ? "  (IDENTICAL)"
+          : r.correlation < -0.9 ? "  (INVERSE)"
+          : r.correlation < -0.5 ? "  (ANTI-CORRELATED)"
+          : r.correlation < 0.2  ? "  (NO CORRELATION)"
+          : r.correlation < 0.5  ? "  (WEAK)"
+                                 : "  (SIMILAR)")
       << "\n";
-  oss << "Chi-Square:       " << chisq << "\n";
-  oss << "Intersection:     " << inter << "\n";
-  oss << "Bhattacharyya:    " << bhatt << "\n";
-  oss << "Kullback-Leibler: " << kldiv << "\n";
+  oss << "Chi-Square:       " << r.chiSquare << "\n";
+  oss << "Intersection:     " << r.intersection << "\n";
+  oss << "Bhattacharyya:    " << r.bhattacharyya << "\n";
+  oss << "Kullback-Leibler: " << r.kldiv << "\n";
 
-  // --- Step 8: Basic interpretation based on correlation value ---
-  oss << "Histogram Correlation: " << std::format("{:.4f}", corr) << "\n";
+  // --- Basic interpretation based on correlation value ---
+  oss << "Histogram Correlation: " << std::format("{:.4f}", r.correlation)
+      << "\n";
 
-  oss << "Similarity Score: " << std::format("{:.2f}%", corr * 100.0) << "\n";
+  oss << "Similarity Score: " << std::format("{:.2f}%", r.correlation * 100.0)
+      << "\n";
 
   oss << "\nInterpretation: ";
-  if (corr > 0.85)
+  if (r.correlation > 0.85)
     oss << "Histograms are nearly identical";
-  else if (corr > 0.50)
+  else if (r.correlation > 0.50)
     oss << "Strong similarity between histograms";
-  else if (corr > 0.20)
+  else if (r.correlation > 0.20)
     oss << "Moderate similarity";
-  else if (corr > -0.20)
+  else if (r.correlation > -0.20)
     oss << "No correlation";
-  else if (corr > -0.50)
+  else if (r.correlation > -0.50)
     oss << "Moderate inverse relation";
   else
     oss << "Histograms are inverses of each other";
@@ -255,17 +266,23 @@ auto ImageAnalyzer::compare_histogram() const -> std::string {
   return oss.str();
 }
 
-auto ImageAnalyzer::compare_structural() const -> std::string {
+auto ImageAnalyzer::compare_histogram() const -> std::string {
+  return summarize(HistogramResult());
+}
 
-  // --- Step 1: Basic validation ---
+auto ImageAnalyzer::compute_structural() const -> StructuralResult {
+
+  // Initialize
+  StructuralResult result;
+
+  // --- Step 1: Validate images ---
   if (image1_.empty() || image2_.empty()) {
-    return "[Structural]\nFailed: One or both images are not loaded.\n";
+    return result;
   }
 
-  // --- Step 2: Convert safely to grayscale ---
+  // --- Step 2: Checks if the images have been converted to grayscale. ---
   if (grayscale1_.empty() || grayscale2_.empty()) {
-    return "[Structural]\nFailed: One or both images were not converted to "
-           "grayscale.\n";
+    return result;
   }
 
   // Bkp
@@ -284,104 +301,103 @@ auto ImageAnalyzer::compare_structural() const -> std::string {
   diff.convertTo(diff, CV_32F);
   diff = diff.mul(diff);
 
-  double mse = cv::sum(diff)[0] / static_cast<double>(grayscale1_.total());
+  result.mse = cv::sum(diff)[0] / static_cast<double>(gray1.total());
 
   // --- Step 5: Compute PSNR (Peak Signal-to-Noise Ratio) ---
   // PSNR is directly derived from MSE and measures how "noisy" image 2 is
   // compared to image 1.
-  double psnr = (mse == 0.0) ? 99.0 : 10.0 * std::log10((255.0 * 255.0) / mse);
+  double psnr = (result.mse == 0.0)
+                    ? 99.0
+                    : 10.0 * std::log10((255.0 * 255.0) / result.mse);
 
   // --- Step 6: Compute SSIM (Structural Similarity Index) ---
   // It measures perceptual similarity, based on brightness, contrast, and
   // structure.
-  auto ssim = [](const cv::Mat &i1, const cv::Mat &i2) -> double {
-    const double C1 = 6.5025;
-    const double C2 = 58.5225;
+  cv::Mat I1, I2;
+  gray1.convertTo(I1, CV_32F);
+  gray2.convertTo(I2, CV_32F);
 
-    cv::Mat I1, I2;
-    i1.convertTo(I1, CV_32F);
-    i2.convertTo(I2, CV_32F);
+  cv::Mat mu1, mu2;
+  cv::GaussianBlur(I1, mu1, cv::Size(11, 11), 1.5);
+  cv::GaussianBlur(I2, mu2, cv::Size(11, 11), 1.5);
 
-    cv::Mat mu1, mu2;
-    cv::GaussianBlur(I1, mu1, cv::Size(11, 11), 1.5);
-    cv::GaussianBlur(I2, mu2, cv::Size(11, 11), 1.5);
+  cv::Mat mu1_2 = mu1.mul(mu1);
+  cv::Mat mu2_2 = mu2.mul(mu2);
+  cv::Mat mu1_mu2 = mu1.mul(mu2);
 
-    cv::Mat mu1_2 = mu1.mul(mu1);
-    cv::Mat mu2_2 = mu2.mul(mu2);
-    cv::Mat mu1_mu2 = mu1.mul(mu2);
+  cv::Mat sigma1_2, sigma2_2, sigma12;
+  cv::GaussianBlur(I1.mul(I1), sigma1_2, cv::Size(11, 11), 1.5);
+  cv::GaussianBlur(I2.mul(I2), sigma2_2, cv::Size(11, 11), 1.5);
+  cv::GaussianBlur(I1.mul(I2), sigma12, cv::Size(11, 11), 1.5);
 
-    cv::Mat sigma1_2, sigma2_2, sigma12;
+  sigma1_2 -= mu1_2;
+  sigma2_2 -= mu2_2;
+  sigma12 -= mu1_mu2;
 
-    cv::GaussianBlur(I1.mul(I1), sigma1_2, cv::Size(11, 11), 1.5);
-    cv::GaussianBlur(I2.mul(I2), sigma2_2, cv::Size(11, 11), 1.5);
-    cv::GaussianBlur(I1.mul(I2), sigma12, cv::Size(11, 11), 1.5);
+  const double C1 = 6.5025;
+  const double C2 = 58.5225;
 
-    sigma1_2 -= mu1_2;
-    sigma2_2 -= mu2_2;
-    sigma12 -= mu1_mu2;
+  cv::Mat t1 = (2.0 * mu1_mu2 + C1);
+  cv::Mat t2 = (2.0 * sigma12 + C2);
+  cv::Mat t3 = (mu1_2 + mu2_2 + C1);
+  cv::Mat t4 = (sigma1_2 + sigma2_2 + C2);
 
-    cv::Mat t1 = (2.0 * mu1_mu2 + C1);
-    cv::Mat t2 = (2.0 * sigma12 + C2);
-    cv::Mat t3 = (mu1_2 + mu2_2 + C1);
-    cv::Mat t4 = (sigma1_2 + sigma2_2 + C2);
+  result.ssimMap = (t1.mul(t2)) / (t3.mul(t4));
+  result.ssim = cv::mean(result.ssimMap)[0];
 
-    cv::Mat ssim_map;
-    cv::divide(t1.mul(t2), t3.mul(t4), ssim_map);
+  return result;
+}
 
-    return cv::mean(ssim_map)[0];
-  };
-
-  double ssim_value = ssim(gray1, gray2);
-
-  // --- Step 7: Build output string ---
+auto ImageAnalyzer::summarize(const StructuralResult &r) const -> std::string {
+  // --- Build output string ---
   std::string mse_quality;
-  if (mse == 0.0) {
+  if (r.mse == 0.0) {
     mse_quality = "Perfect match (no error)";
-  } else if (mse < 10.0) {
+  } else if (r.mse < 10.0) {
     mse_quality = "Very small error (excellent similarity)";
-  } else if (mse < 50.0) {
+  } else if (r.mse < 50.0) {
     mse_quality = "Small error (good similarity)";
-  } else if (mse < 200.0) {
+  } else if (r.mse < 200.0) {
     mse_quality = "Moderate error (visible differences)";
   } else {
     mse_quality = "High error (images differ strongly)";
   }
 
   std::string psnr_quality;
-  if (!std::isfinite(psnr)) {
+  if (!std::isfinite(r.psnr)) {
     psnr_quality = "Infinite (perfect reconstruction)";
-  } else if (psnr > 40.0) {
+  } else if (r.psnr > 40.0) {
     psnr_quality = "Excellent (visually identical or extremely similar)";
-  } else if (psnr > 30.0) {
+  } else if (r.psnr > 30.0) {
     psnr_quality = "Good (small differences)";
-  } else if (psnr > 20.0) {
+  } else if (r.psnr > 20.0) {
     psnr_quality = "Fair (perceptible degradation)";
   } else {
     psnr_quality = "Poor (noticeable noise or distortion)";
   }
 
   std::string ssim_quality;
-  if (ssim_value > 0.95) {
+  if (r.ssim > 0.95) {
     ssim_quality = "Excellent structural similarity";
-  } else if (ssim_value > 0.80) {
+  } else if (r.ssim > 0.80) {
     ssim_quality = "High similarity";
-  } else if (ssim_value > 0.60) {
+  } else if (r.ssim > 0.60) {
     ssim_quality = "Partial similarity (structure differs)";
-  } else if (ssim_value > 0.0) {
+  } else if (r.ssim > 0.0) {
     ssim_quality = "Low similarity (different structure)";
   } else {
     ssim_quality = "Possible negative correlation or inversion";
   }
 
   // Extra detection: strong structural inversion indicator
-  bool is_inverse = (ssim_value < 0.0 && mse > 200.0);
+  bool is_inverse = (r.ssim < 0.0 && r.mse > 200.0);
 
   // Formatting output information
   std::ostringstream oss;
   oss << "[Structural]\n";
-  oss << "MSE  : " << mse << "   --> " << mse_quality << "\n";
-  oss << "PSNR : " << psnr << " dB --> " << psnr_quality << "\n";
-  oss << "SSIM : " << ssim_value << "   --> " << ssim_quality << "\n";
+  oss << "MSE  : " << r.mse << "   --> " << mse_quality << "\n";
+  oss << "PSNR : " << r.psnr << " dB --> " << psnr_quality << "\n";
+  oss << "SSIM : " << r.ssim << "   --> " << ssim_quality << "\n";
 
   if (is_inverse) {
     oss << "\nDetection: Strong indicators of INVERSION between the "
@@ -395,13 +411,13 @@ auto ImageAnalyzer::compare_structural() const -> std::string {
 
   // --- Step 8: Interpretation ---
   oss << "\nInterpretation: ";
-  if (ssim_value > 0.95)
+  if (r.ssim > 0.95)
     oss << "Images are structurally identical";
-  else if (ssim_value > 0.75)
+  else if (r.ssim > 0.75)
     oss << "Strong structural similarity";
-  else if (ssim_value > 0.40)
+  else if (r.ssim > 0.40)
     oss << "Moderate structural similarity";
-  else if (ssim_value > 0.10)
+  else if (r.ssim > 0.10)
     oss << "Weak similarity";
   else
     oss << "Images are structurally different";
@@ -411,58 +427,21 @@ auto ImageAnalyzer::compare_structural() const -> std::string {
   return oss.str();
 }
 
-auto imgtools::ImageAnalyzer::compare_features(FeatureMethod method) const
-    -> std::string {
+auto ImageAnalyzer::compare_structural() const -> std::string {
+  return {summarize(StructuralResult())};
+}
 
-  std::ostringstream oss;
-  oss << "[Feature Matching]\n";
+auto ImageAnalyzer::compute_features(FeatureMethod method) const
+    -> FeatureResult {
 
-  // --- Step 1: Validate grayscale conversion ---
+  // Initialize
+  FeatureResult result;
+  result.method = method;
+
+  // --- Step 1: Checks if the images have been converted to grayscale. ---
   if (grayscale1_.empty() || grayscale2_.empty()) {
-    oss << "Error: Images not loaded.\n";
-    return oss.str();
+    return result;
   }
-
-  // --- Auxiliary Function : Homography classification ---
-  auto classifyHomography = [](const cv::Mat &H) -> std::string {
-    if (H.empty())
-      return "None";
-
-    double p0 = std::abs(H.at<double>(2, 0));
-    double p1 = std::abs(H.at<double>(2, 1));
-
-    if (p0 < 1e-3 && p1 < 1e-3)
-      return "Affine/Similarity";
-    return "Perspective";
-  };
-
-  // --- Auxiliary Function : Quality based on inlier ratio ---
-  auto qualityLabel = [](double r) -> std::string {
-    if (r > 0.60)
-      return "GOOD";
-    if (r > 0.30)
-      return "MODERATE";
-    return "POOR";
-  };
-
-  // --- Auxiliary Function : Mean and variance ---
-  auto mean = [](const std::vector<double> &v) -> double {
-    if (v.empty())
-      return 0.0;
-    double s = 0.0;
-    for (double x : v)
-      s += x;
-    return s / v.size();
-  };
-
-  auto variance = [](const std::vector<double> &v, double m) -> double {
-    if (v.size() < 2)
-      return 0.0;
-    double sum = 0.0;
-    for (double x : v)
-      sum += (x - m) * (x - m);
-    return sum / (v.size() - 1);
-  };
 
   // Step 2: Feature detector/descriptor selection
   //
@@ -488,17 +467,14 @@ auto imgtools::ImageAnalyzer::compare_features(FeatureMethod method) const
   switch (method) {
   case FeatureMethod::ORB:
     detector = cv::ORB::create(1500); // FAST + BRIEF (binary)
-    oss << "Method: ORB\n";
     break;
 
   case FeatureMethod::AKAZE:
     detector = cv::AKAZE::create(); // nonlinear scale space
-    oss << "Method: AKAZE\n";
     break;
 
   case FeatureMethod::SIFT:
     detector = cv::SIFT::create(1200); // gradient-based, float descriptors
-    oss << "Method: SIFT\n";
     break;
   }
 
@@ -513,27 +489,23 @@ auto imgtools::ImageAnalyzer::compare_features(FeatureMethod method) const
                 cv::DescriptorMatcher::BRUTEFORCE_HAMMING)
           : cv::DescriptorMatcher::create(cv::DescriptorMatcher::FLANNBASED);
 
-  std::vector<cv::KeyPoint> kp1, kp2; // keypoints
-  cv::Mat desc1, desc2;               // descriptors
-
   // Detects keypoints and computes the descriptors
-  detector->detectAndCompute(grayscale1_, cv::noArray(), kp1, desc1);
-  detector->detectAndCompute(grayscale2_, cv::noArray(), kp2, desc2);
+  detector->detectAndCompute(grayscale1_, cv::noArray(), result.keypoints1,
+                             result.descriptors1);
+  detector->detectAndCompute(grayscale2_, cv::noArray(), result.keypoints2,
+                             result.descriptors2);
 
-  oss << "Keypoints Image 1: " << kp1.size() << "\n";
-  oss << "Keypoints Image 2: " << kp2.size() << "\n";
+  if (result.keypoints1.empty() || result.keypoints2.empty())
+    return result;
 
-  if (kp1.empty() || kp2.empty() || desc1.empty() || desc2.empty()) {
-    oss << "Error: Could not compute descriptors.\n";
-    return oss.str();
-  }
+  if (result.descriptors1.empty() || result.descriptors2.empty())
+    return result;
 
   // Step 3: KNN matching (K-Nearest Neighbors) + Lowe ratio test
   // Finding reliable matches between the feature descriptors of two images
   std::vector<std::vector<cv::DMatch>> knnMatches;
-  matcher->knnMatch(desc1, desc2, knnMatches, 2);
+  matcher->knnMatch(result.descriptors1, result.descriptors2, knnMatches, 2);
 
-  std::vector<cv::DMatch> goodMatches;
   std::vector<double> ratios;
   std::vector<double> distances;
 
@@ -545,17 +517,14 @@ auto imgtools::ImageAnalyzer::compare_features(FeatureMethod method) const
 
     float r = pair[0].distance / pair[1].distance;
     if (r < ratioThresh) {
-      goodMatches.push_back(pair[0]);
+      result.matches.push_back(pair[0]);
       ratios.push_back(r);
       distances.push_back(pair[0].distance);
     }
   }
 
-  oss << "Good Matches: " << goodMatches.size() << "\n";
-
-  if (goodMatches.size() < 4) {
-    oss << "Not enough matches for homography.\n";
-    return oss.str();
+  if (result.matches.size() < 4) {
+    return result;
   }
 
   // Step 4: Compute Homography with RANSAC
@@ -568,50 +537,108 @@ auto imgtools::ImageAnalyzer::compare_features(FeatureMethod method) const
   // noise and, more crucially, outliers (incorrect data).
   //
   std::vector<cv::Point2f> pts1, pts2;
-  for (auto &m : goodMatches) {
-    pts1.push_back(kp1[m.queryIdx].pt);
-    pts2.push_back(kp2[m.trainIdx].pt);
+  for (auto &m : result.matches) {
+    pts1.push_back(result.keypoints1[m.queryIdx].pt);
+    pts2.push_back(result.keypoints2[m.trainIdx].pt);
   }
 
   std::vector<unsigned char> inlierMask;
   cv::Mat H = cv::findHomography(pts1, pts2, cv::RANSAC, 3.0, inlierMask);
 
-  int inliers = std::count(inlierMask.begin(), inlierMask.end(), 1);
-  int outliers = goodMatches.size() - inliers;
-  double inlierRatio = (double)inliers / goodMatches.size();
+  int inliersCount = std::count(inlierMask.begin(), inlierMask.end(), 1);
+  result.inlierRatio =
+      static_cast<double>(inliersCount / result.matches.size());
 
-  // Step 5: Report RANSAC results
+  // --- Auxiliary Function : Mean and variance ---
+  auto mean = [&](const std::vector<double> &v) {
+    return v.empty() ? 0.0
+                     : std::accumulate(v.begin(), v.end(), 0.0) / v.size();
+  };
+
+  auto variance = [&](const std::vector<double> &v, double m) {
+    if (v.size() < 2)
+      return 0.0;
+    double sum = 0.0;
+    for (double x : v)
+      sum += (x - m) * (x - m);
+    return sum / (v.size() - 1);
+  };
+
+  // Compute distance stats
+  result.meanDistance = mean(distances);
+  result.distanceVariance = variance(distances, result.meanDistance);
+  result.meanRatio = mean(ratios);
+
+  return result;
+}
+
+auto ImageAnalyzer::summarize(const FeatureResult &r) const -> std::string {
+
+  // --- Build output string ---
+  std::ostringstream oss;
+  oss << "[Feature Matching]\n";
+  oss << "Keypoints Image 1: " << r.keypoints1.size() << "\n";
+  oss << "Keypoints Image 2: " << r.keypoints2.size() << "\n";
+
+  if (r.matches.empty()) {
+    oss << "Descriptors unavailable or insufficient matches.\n";
+    return oss.str();
+  }
+
+  int inliers = std::count(r.inliersMask.begin(), r.inliersMask.end(), 1);
+  int outliers = r.matches.size() - inliers;
+
+  oss << "Good Matches: " << r.matches.size() << "\n";
+
+  // --- Auxiliary Function : Homography classification ---
+  auto classifyHomography = [](const cv::Mat &H) -> std::string {
+    if (H.empty())
+      return "None";
+
+    double p0 = std::abs(H.at<double>(2, 0));
+    double p1 = std::abs(H.at<double>(2, 1));
+
+    if (p0 < 1e-3 && p1 < 1e-3)
+      return "Affine/Similarity";
+    return "Perspective";
+  };
+
+  // --- Auxiliary Function : Quality based on inlier ratio ---
+  auto qualityLabel = [](double r) -> std::string {
+    if (r > 0.60)
+      return "GOOD";
+    if (r > 0.30)
+      return "MODERATE";
+    return "POOR";
+  };
+
+  // Report RANSAC results
   oss << "\n[RANSAC]\n";
   oss << "Inliers: " << inliers << "\n";
   oss << "Outliers: " << outliers << "\n";
-  oss << "Inlier Ratio: " << inlierRatio << " (" << qualityLabel(inlierRatio)
-      << ")\n";
+  oss << "Inlier Ratio: " << r.inlierRatio << " ("
+      << qualityLabel(r.inlierRatio) << ")\n";
 
-  // Step 6: Homography details
+  // Homography details
   oss << "\n[Homography]\n";
-  if (!H.empty()) {
+  if (!r.homography.empty()) {
     oss << "Status: FOUND\n";
-    oss << "Type: " << classifyHomography(H) << "\n";
-    oss << "Determinant: " << std::abs(cv::determinant(H)) << "\n";
+    oss << "Type: " << classifyHomography(r.homography) << "\n";
+    oss << "Determinant: " << std::abs(cv::determinant(r.homography)) << "\n";
   } else {
     oss << "Status: NOT FOUND\n";
   }
 
-  // Step 7: Match confidence metrics
-  double meanDist = mean(distances);
-  double varDist = variance(distances, meanDist);
-  double meanRatio = mean(ratios);
-
   oss << "\n[Match Confidence]\n";
-  oss << "Average Match Distance: " << meanDist << "\n";
-  oss << "Distance Variance: " << varDist << "\n";
-  oss << "Mean Lowe Ratio: " << meanRatio << "\n";
+  oss << "Average Match Distance: " << r.meanDistance << "\n";
+  oss << "Distance Variance: " << r.distanceVariance << "\n";
+  oss << "Mean Lowe Ratio: " << r.meanRatio << "\n";
 
   // Step 8: High-level interpretation
   oss << "\n[Summary]\n";
-  if (inlierRatio > 0.60)
+  if (r.inlierRatio > 0.60)
     oss << "Images have STRONG structural similarity.\n";
-  else if (inlierRatio > 0.30)
+  else if (r.inlierRatio > 0.30)
     oss << "Images have MODERATE similarity.\n";
   else
     oss << "Images are likely DIFFERENT.\n";
@@ -619,10 +646,14 @@ auto imgtools::ImageAnalyzer::compare_features(FeatureMethod method) const
   return oss.str();
 }
 
+auto ImageAnalyzer::compare_features(FeatureMethod method) const
+    -> std::string {
+  return summarize(FeatureResult());
+}
+
 // Export a detailed report with headers and separators.
 auto ImageAnalyzer::export_report(const std::filesystem::path &output_path,
                                   FeatureMethod method) const -> bool {
-
   std::string path{output_path};
   if (std::filesystem::path(output_path).extension() != ".txt") {
     path.append(".txt");
