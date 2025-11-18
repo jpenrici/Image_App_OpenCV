@@ -13,6 +13,10 @@ inline std::string fpath(const std::string_view filename) {
   return (std::filesystem::path(TEST_PATH) / filename).string();
 }
 
+using Result = std::expected<std::string, std::string>;
+
+const std::string MSG_ERROR = "Images not available.";
+
 void image() {
   const std::filesystem::path dir{TEST_PATH};
   if (std::filesystem::create_directories(dir)) {
@@ -25,7 +29,8 @@ void image() {
   std::array<cv::Mat, 8> img;
   img.at(0) = cv::Mat();                       // empty
   img.at(1) = cv::Mat(height, width, CV_8UC1); // Grayscale
-  img.at(3) = cv::Mat(height, width, CV_8UC1);
+  img.at(2) = img.at(1);                       // Identical images
+  img.at(3) = cv::Mat(height, width, CV_8UC1); // Grayscale
 
   // Build gradient: left = 0, right = 255
   for (int y = 0; y < height; ++y) {
@@ -35,9 +40,6 @@ void image() {
           255 - static_cast<uchar>(x); // inverted gradient
     }
   }
-
-  // Identical images
-  img.at(2) = img.at(1);
 
   // Colorful images
   img.at(4) = cv::Mat(height, width, CV_8UC3, cv::Scalar(0, 0, 255)); // Red
@@ -70,7 +72,11 @@ void image() {
   }
 }
 
-auto test_basic(imgtools::ImageAnalyzer &img) -> std::string {
+auto test_basic(imgtools::ImageAnalyzer &img) -> Result {
+
+  if (!img.images_available()) {
+    return std::unexpected(MSG_ERROR);
+  }
 
   std::ostringstream oss;
   oss << "\n---- Basic Metadata ----\n";
@@ -81,7 +87,12 @@ auto test_basic(imgtools::ImageAnalyzer &img) -> std::string {
   return oss.str();
 }
 
-auto test_histogram(imgtools::ImageAnalyzer &img) -> std::string {
+auto test_histogram(imgtools::ImageAnalyzer &img) -> Result {
+
+  if (!img.images_available()) {
+    return std::unexpected(MSG_ERROR);
+  }
+
   std::ostringstream oss;
   oss << "---- Histogram Analysis ----\n";
   oss << img.compare_histogram();
@@ -89,7 +100,12 @@ auto test_histogram(imgtools::ImageAnalyzer &img) -> std::string {
   return oss.str();
 }
 
-auto test_structural(imgtools::ImageAnalyzer &img) -> std::string {
+auto test_structural(imgtools::ImageAnalyzer &img) -> Result {
+
+  if (!img.images_available()) {
+    return std::unexpected(MSG_ERROR);
+  }
+
   std::ostringstream oss;
   oss << "---- Structural Analysis ----\n";
   oss << img.compare_structural();
@@ -98,7 +114,12 @@ auto test_structural(imgtools::ImageAnalyzer &img) -> std::string {
 }
 
 auto test_features(imgtools::ImageAnalyzer &img, imgtools::FeatureMethod method)
-    -> std::string {
+    -> Result {
+
+  if (!img.images_available()) {
+    return std::unexpected(MSG_ERROR);
+  }
+
   std::ostringstream oss;
   oss << "---- Features Analysis ----\n";
   oss << img.compare_features(method);
@@ -112,29 +133,32 @@ void analyze(std::pair<std::string_view, std::string_view> paths,
   auto [path1, path2] = paths;
   imgtools::ImageAnalyzer iia(path1, path2);
 
-  if (!imgtools::exists(path1) || !imgtools::exists(path2)) {
-    std::println("Images missing. Aborting test!");
-    return;
-  }
+  auto name1 = std::filesystem::path(path1).filename().string();
+  auto name2 = std::filesystem::path(path2).filename().string();
 
-  if (iia.load_images()) {
-    auto name1 = std::filesystem::path(path1).filename().string();
-    auto name2 = std::filesystem::path(path2).filename().string();
+  std::println("========================================");
+  std::println("Test: Comparing '{}' <-> '{}'", name1, name2);
+  std::println("========================================\n");
 
-    std::println("========================================");
-    std::println("Test: Comparing '{}' <-> '{}'", name1, name2);
-    std::println("========================================\n");
+  auto process = [](Result r) {
+    if (r.has_value()) {
+      std::println("{}", r.value());
+    } else {
+      std::println("{}", r.error());
+    }
+  };
 
-    std::println("{}", test_basic(iia));
-    std::println("{}", test_histogram(iia));
-    std::println("{}", test_structural(iia));
-    std::println("{}", test_features(iia, method));
+  process(test_basic(iia));
+  process(test_histogram(iia));
+  process(test_structural(iia));
+  process(test_features(iia, method));
 
-    auto outname = std::format("report_{}_{}", name1.substr(0, name1.find('.')),
-                               name2.substr(0, name2.find('.')));
+  auto outname = std::format("report_{}_{}", name1.substr(0, name1.find('.')),
+                             name2.substr(0, name2.find('.')));
 
-    iia.export_report(fpath(outname), method);
-  }
+  iia.export_report(fpath(outname), method);
+
+  std::println("----------------------------------------\n");
 }
 
 void test() {
@@ -147,6 +171,9 @@ void test() {
   auto check = [](std::string_view p1, std::string_view p2) {
     analyze({fpath(p1), fpath(p2)});
   };
+
+  // Test - invalid images
+  check("", "");
 
   // Test - identical images
   check("img1.png", "img2.png");

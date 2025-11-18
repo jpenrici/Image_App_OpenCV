@@ -136,7 +136,7 @@ struct FeatureResult {
  */
 class ImageAnalyzer {
 public:
-    explicit ImageAnalyzer(std::string_view path1, std::string_view path2) noexcept;
+    explicit ImageAnalyzer(std::string_view path1, std::string_view path2);
     ~ImageAnalyzer() noexcept = default;
 
     ImageAnalyzer(const ImageAnalyzer&) = default;
@@ -144,15 +144,6 @@ public:
 
     ImageAnalyzer(ImageAnalyzer&&) noexcept = default;
     auto operator=(ImageAnalyzer&&) noexcept -> ImageAnalyzer& = default;
-
-    /**
-     * @brief Loads both images (color + grayscale).
-     *
-     * After this call:
-     *   - image1_, image2_ contain full-color images.
-     *   - grayscale1_, grayscale2_ contain cv::COLOR_BGR2GRAY versions.
-     */
-    [[nodiscard]] auto load_images() -> bool;
 
     // --------------------------------------------------------------
     // BASIC COMPARISON
@@ -225,8 +216,18 @@ public:
     // ACCESSORS
     // --------------------------------------------------------------
 
-    auto images() const -> std::pair<cv::Mat, cv::Mat>;
-    auto paths() const -> std::pair<std::filesystem::path, std::filesystem::path>;
+    /**
+     * @brief images
+     *
+     * @param grayscale boolean
+     * @return If false, it returns the OpenCV array of the original images;
+     * if true, it returns the images from the grayscale conversion.
+     */
+    [[nodiscard]] auto images(bool grayscale = false) const -> std::pair<cv::Mat, cv::Mat>;
+
+    [[nodiscard]] auto paths() const -> std::pair<std::filesystem::path, std::filesystem::path>;
+
+    [[nodiscard]] auto images_available() const -> bool;
 
 private:
     cv::Mat image1_;
@@ -236,6 +237,17 @@ private:
 
     std::filesystem::path path1_;
     std::filesystem::path path2_;
+
+    bool images_loaded_;
+
+    /**
+     * @brief Loads both images (color + grayscale).
+     *
+     * After this call:
+     *   - image1_, image2_ contain full-color images.
+     *   - grayscale1_, grayscale2_ contain cv::COLOR_BGR2GRAY versions.
+     */
+    [[nodiscard]] auto load_images() -> bool;
 };
 
 // --------------------------------------------------------------
@@ -243,7 +255,9 @@ private:
 // --------------------------------------------------------------
 
 void save(std::string_view filepath, const cv::Mat& image);
+
 auto load(std::string_view filepath) -> cv::Mat;
-auto exists(std::string_view filepath) -> bool;
+
+[[nodiscard]] auto exists(std::string_view filepath) -> bool;
 
 } // namespace imgtools

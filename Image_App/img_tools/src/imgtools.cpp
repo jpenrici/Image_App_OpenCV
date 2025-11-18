@@ -21,19 +21,45 @@ auto load(std::string_view filepath) -> cv::Mat {
 }
 
 auto exists(std::string_view filepath) -> bool {
-  // Check if file exists in filesystem.
-  return std::filesystem::exists(filepath);
+  // Check if it's a file and if it exists in the file system.
+  return std::filesystem::is_regular_file(filepath);
 }
 
 // --- Class implementation ---
 
-ImageAnalyzer::ImageAnalyzer(std::string_view path1,
-                             std::string_view path2) noexcept
-    : path1_(path1), path2_(path2) {}
+ImageAnalyzer::ImageAnalyzer(std::string_view path1, std::string_view path2)
+    : path1_(path1), path2_(path2), images_loaded_(false) {
+  // Check paths
+  if (path1.empty() || path2.empty()) {
+    std::println("Warning: Path to images is empty! Nothing will be analyzed!");
+    return;
+  }
+
+  // Check files
+  if (!exists(path1) || !exists(path2)) {
+    std::println("Images missing. Aborting processing!");
+    return;
+  }
+
+  // Initialize
+  if (!load_images()) {
+    std::println("Error loading images!");
+  };
+}
 
 // Load both images safely.
 auto ImageAnalyzer::load_images() -> bool {
-  // Load
+
+  // Configure flag
+  images_loaded_ = false;
+
+  // Clear stored images
+  image1_.release();
+  image2_.release();
+  grayscale1_.release();
+  grayscale2_.release();
+
+  // Load images using OpenCV
   image1_ = cv::imread(path1_.string(), cv::IMREAD_UNCHANGED);
   image2_ = cv::imread(path2_.string(), cv::IMREAD_UNCHANGED);
 
@@ -58,16 +84,22 @@ auto ImageAnalyzer::load_images() -> bool {
     try {
       to_gray(image1_, grayscale1_);
       to_gray(image2_, grayscale2_);
+      images_loaded_ = true;
     } catch (const std::exception &ex) {
       std::println("[Grayscale Conversion]\nError: {}", ex.what());
     }
-    return true;
   }
 
-  return false;
+  return images_loaded_;
 }
 
-auto ImageAnalyzer::images() const -> std::pair<cv::Mat, cv::Mat> {
+auto ImageAnalyzer::images_available() const -> bool { return images_loaded_; }
+
+auto ImageAnalyzer::images(bool grayscale) const
+    -> std::pair<cv::Mat, cv::Mat> {
+  if (grayscale) {
+    return {grayscale1_, grayscale2_};
+  }
   return {image1_, image2_};
 }
 
@@ -81,8 +113,10 @@ auto ImageAnalyzer::compare_basic() const -> std::string {
 
   std::ostringstream oss;
   oss << "[Basic Comparison]\n";
-  if (image1_.empty() || image2_.empty()) {
-    oss << "Warning: empty or unloaded images. Call load_images().\n";
+
+  if (!images_loaded_) {
+    oss << "Warning: Unprepared images. Abort processing!\n";
+    return oss.str();
   }
 
   // Compare extensions.
@@ -135,8 +169,8 @@ auto ImageAnalyzer::compare_color_space() const -> std::string {
   std::ostringstream oss;
   oss << "[Color Space]\n";
 
-  if (image1_.empty() || image2_.empty()) {
-    oss << "Images not loaded.\n";
+  if (!images_loaded_) {
+    oss << "Warning: Unprepared images. Abort processing!\n";
     return oss.str();
   }
 
@@ -167,6 +201,11 @@ auto ImageAnalyzer::compute_histogram() const -> HistogramResult {
 
   // Initialize
   HistogramResult result;
+
+  if (!images_loaded_) {
+    std::println("Warning: Unprepared images. Abort processing!");
+    return result;
+  }
 
   // --- Step 1: Validate images ---
   if (image1_.empty() || image2_.empty()) {
@@ -286,6 +325,11 @@ auto ImageAnalyzer::compute_structural() const -> StructuralResult {
 
   // Initialize
   StructuralResult result;
+
+  if (!images_loaded_) {
+    std::println("Warning: Unprepared images. Abort processing!");
+    return result;
+  }
 
   // --- Step 1: Validate images ---
   if (image1_.empty() || image2_.empty()) {
@@ -448,6 +492,11 @@ auto ImageAnalyzer::compute_features(FeatureMethod method) const
   // Initialize
   FeatureResult result;
   result.method = method;
+
+  if (!images_loaded_) {
+    std::println("Warning: Unprepared images. Abort processing!");
+    return result;
+  }
 
   // --- Step 1: Checks if the images have been converted to grayscale. ---
   if (grayscale1_.empty() || grayscale2_.empty()) {
@@ -674,6 +723,12 @@ auto ImageAnalyzer::compare_features(FeatureMethod method) const
 // Export a detailed report with headers and separators.
 auto ImageAnalyzer::export_report(const std::filesystem::path &output_path,
                                   FeatureMethod method) const -> bool {
+
+  if (!images_loaded_) {
+    std::println("Unprepared images. Abort processing!");
+    return false;
+  }
+
   std::string path{output_path};
   if (std::filesystem::path(output_path).extension() != ".txt") {
     path.append(".txt");
