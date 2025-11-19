@@ -74,14 +74,15 @@ void image() {
 
 auto test_basic(imgtools::ImageAnalyzer &img) -> Result {
 
+  std::ostringstream oss;
+  oss << "\n---- Test : Basic Metadata and Color Space ----\n";
+
   if (!img.images_available()) {
-    return std::unexpected(MSG_ERROR);
+    oss << MSG_ERROR << "\n";
+    return std::unexpected(oss.str());
   }
 
-  std::ostringstream oss;
-  oss << "\n---- Basic Metadata ----\n";
-  oss << img.compare_basic();
-  oss << "\n---- Color Space ----\n";
+  oss << img.compare_basic() << "\n";
   oss << img.compare_color_space();
 
   return oss.str();
@@ -89,12 +90,14 @@ auto test_basic(imgtools::ImageAnalyzer &img) -> Result {
 
 auto test_histogram(imgtools::ImageAnalyzer &img) -> Result {
 
+  std::ostringstream oss;
+  oss << "---- Test : Histogram Analysis ----\n";
+
   if (!img.images_available()) {
-    return std::unexpected(MSG_ERROR);
+    oss << MSG_ERROR << "\n";
+    return std::unexpected(oss.str());
   }
 
-  std::ostringstream oss;
-  oss << "---- Histogram Analysis ----\n";
   oss << img.compare_histogram();
 
   return oss.str();
@@ -102,12 +105,14 @@ auto test_histogram(imgtools::ImageAnalyzer &img) -> Result {
 
 auto test_structural(imgtools::ImageAnalyzer &img) -> Result {
 
+  std::ostringstream oss;
+  oss << "---- Test : Structural Analysis ----\n";
+
   if (!img.images_available()) {
-    return std::unexpected(MSG_ERROR);
+    oss << MSG_ERROR << "\n";
+    return std::unexpected(oss.str());
   }
 
-  std::ostringstream oss;
-  oss << "---- Structural Analysis ----\n";
   oss << img.compare_structural();
 
   return oss.str();
@@ -116,12 +121,14 @@ auto test_structural(imgtools::ImageAnalyzer &img) -> Result {
 auto test_features(imgtools::ImageAnalyzer &img, imgtools::FeatureMethod method)
     -> Result {
 
+  std::ostringstream oss;
+  oss << "---- Test : Features Analysis ----\n";
+
   if (!img.images_available()) {
-    return std::unexpected(MSG_ERROR);
+    oss << MSG_ERROR << "\n";
+    return std::unexpected(oss.str());
   }
 
-  std::ostringstream oss;
-  oss << "---- Features Analysis ----\n";
   oss << img.compare_features(method);
 
   return oss.str();
@@ -138,7 +145,7 @@ void analyze(std::pair<std::string_view, std::string_view> paths,
 
   std::println("========================================");
   std::println("Test: Comparing '{}' <-> '{}'", name1, name2);
-  std::println("========================================\n");
+  std::println("========================================");
 
   auto process = [](Result r) {
     if (r.has_value()) {
