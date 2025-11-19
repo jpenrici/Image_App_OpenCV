@@ -4,141 +4,107 @@
  <widget class="QMainWindow" name="MainWindow">
   <property name="geometry">
    <rect>
-    <x>0</x>
-    <y>0</y>
-    <width>980</width>
-    <height>620</height>
+    <x>0</x><y>0</y><width>1200</width><height>700</height>
    </rect>
   </property>
   <property name="windowTitle">
-   <string>ImageTools - Qt6 GUI</string>
+   <string>ImageTools GUI</string>
   </property>
 
   <widget class="QWidget" name="centralwidget">
-   <layout class="QVBoxLayout" name="verticalLayout">
-
-    <!-- TOP SECTION: TWO IMAGE PANELS -->
+   <layout class="QHBoxLayout" name="mainLayout">
     <item>
-     <layout class="QHBoxLayout" name="imagePanels">
-
-      <!-- LEFT IMAGE -->
-      <item>
-       <layout class="QVBoxLayout" name="leftImageLayout">
-        <item>
-         <widget class="QLabel" name="labelImageA">
-          <property name="minimumSize">
-           <size><width>400</width><height>300</height></size>
-          </property>
-          <property name="frameShape">
-           <enum>QFrame::StyledPanel</enum>
-          </property>
-          <property name="alignment">
-           <set>Qt::AlignCenter</set>
-          </property>
-          <property name="text">
-           <string>Image A</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QPushButton" name="btnLoadA">
-          <property name="text">
-           <string>Load Image A</string>
-          </property>
-         </widget>
-        </item>
-       </layout>
-      </item>
-
-      <!-- RIGHT IMAGE -->
-      <item>
-       <layout class="QVBoxLayout" name="rightImageLayout">
-        <item>
-         <widget class="QLabel" name="labelImageB">
-          <property name="minimumSize">
-           <size><width>400</width><height>300</height></size>
-          </property>
-          <property name="frameShape">
-           <enum>QFrame::StyledPanel</enum>
-          </property>
-          <property name="alignment">
-           <set>Qt::AlignCenter</set>
-          </property>
-          <property name="text">
-           <string>Image B</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QPushButton" name="btnLoadB">
-          <property name="text">
-           <string>Load Image B</string>
-          </property>
-         </widget>
-        </item>
-       </layout>
-      </item>
-
-     </layout>
-    </item>
-
-    <!-- RESULT PANEL -->
-    <item>
-     <widget class="QTextEdit" name="txtResults">
-      <property name="minimumHeight">
-       <number>120</number>
+     <widget class="QFrame" name="leftFrame">
+      <property name="frameShape">
+       <enum>QFrame::StyledPanel</enum>
       </property>
-      <property name="readOnly">
-       <bool>true</bool>
-      </property>
-      <property name="placeholderText">
-       <string>Results of loaded images and comparisons will appear here...</string>
-      </property>
+      <layout class="QVBoxLayout" name="leftLayout">
+
+       <!-- Image 1 -->
+       <item>
+        <widget class="QLabel" name="labelImg1">
+         <property name="text">
+          <string>[Image 1]</string>
+         </property>
+         <property name="alignment">
+          <set>Qt::AlignCenter</set>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QPushButton" name="btnLoadImg1">
+         <property name="text"><string>Load Image 1</string></property>
+        </widget>
+       </item>
+
+       <!-- Image 2 -->
+       <item>
+        <widget class="QLabel" name="labelImg2">
+         <property name="text"><string>[Image 2]</string></property>
+         <property name="alignment"><set>Qt::AlignCenter</set></property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QPushButton" name="btnLoadImg2">
+         <property name="text"><string>Load Image 2</string></property>
+        </widget>
+       </item>
+
+      </layout>
      </widget>
     </item>
 
-    <!-- ACTION BUTTONS -->
     <item>
-     <layout class="QHBoxLayout" name="bottomActions">
+     <widget class="QFrame" name="rightFrame">
+      <property name="frameShape">
+       <enum>QFrame::StyledPanel</enum>
+      </property>
 
-      <item>
-       <widget class="QPushButton" name="btnReload">
-        <property name="text">
-         <string>Reload Images</string>
-        </property>
-       </widget>
-      </item>
+      <layout class="QVBoxLayout" name="rightLayout">
+       <item>
+        <widget class="QTextEdit" name="txtReport">
+         <property name="readOnly"><bool>true</bool></property>
+        </widget>
+       </item>
 
-      <item>
-       <widget class="QPushButton" name="btnCompareFeatures">
-        <property name="text">
-         <string>Compare Features</string>
-        </property>
-       </widget>
-      </item>
+       <item>
+        <layout class="QHBoxLayout" name="buttonRow">
 
-      <item>
-       <spacer name="horizontalSpacer">
-        <property name="orientation">
-         <enum>Qt::Horizontal</enum>
-        </property>
-        <property name="sizeHint">
-         <size><width>40</width><height>20</height></size>
-        </property>
-       </spacer>
-      </item>
+         <item>
+          <widget class="QPushButton" name="btnBasic">
+           <property name="text"><string>Basic</string></property>
+          </widget>
+         </item>
 
-     </layout>
+         <item>
+          <widget class="QPushButton" name="btnHistogram">
+           <property name="text"><string>Histogram</string></property>
+          </widget>
+         </item>
+
+         <item>
+          <widget class="QPushButton" name="btnStructural">
+           <property name="text"><string>Structural</string></property>
+          </widget>
+         </item>
+
+         <item>
+          <widget class="QPushButton" name="btnFeatures">
+           <property name="text"><string>Features</string></property>
+          </widget>
+         </item>
+
+        </layout>
+       </item>
+
+      </layout>
+     </widget>
     </item>
 
    </layout>
   </widget>
 
-  <widget class="QMenuBar" name="menubar"/>
-  <widget class="QStatusBar" name="statusbar"/>
-
  </widget>
-
  <resources/>
  <connections/>
 </ui>

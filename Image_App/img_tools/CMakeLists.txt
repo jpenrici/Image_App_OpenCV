@@ -23,7 +23,7 @@ endif()
 include_directories(include)
 
 add_library(${LIBRARY_NAME} SHARED
-    src/imgtools.cpp
+    src/imagetools.cpp
 )
 
 set_target_properties(${LIBRARY_NAME} PROPERTIES

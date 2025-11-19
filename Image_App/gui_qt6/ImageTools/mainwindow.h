@@ -7,8 +7,6 @@
 #include <QString>
 #include <QTextEdit>
 
-#include <expected>
-
 #include "imagetoolsgui.hpp"
 
 QT_BEGIN_NAMESPACE
@@ -20,7 +18,6 @@ QT_END_NAMESPACE
 /**
  * @brief The MainWindow class
  * Graphical interface for the imgtools library.
- *
  */
 class MainWindow : public QMainWindow {
 
@@ -36,14 +33,18 @@ private:
   QString path1_;
   QString path2_;
 
-  std::unique_ptr<ImageAnalyzerGui> analyzerGui_;
+  std::unique_ptr<ImageAnalyzerGui> analyzer_;
 
+  // Internal helpers
+  void tryRebuildAnalyzer();
   void loadImage1();
   void loadImage2();
-  void tryCreateAnalyzer();
+  void updatePreview();
 
-  void displayImage(const cv::Mat &img, QLabel *target);
-  void appendLog(const QString &msg);
+  void runBasic();
+  void runHistogram();
+  void runStructural();
+  void runFeatures();
 };
 
 #endif // MAINWINDOW_H
