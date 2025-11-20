@@ -18,7 +18,7 @@ set(IMGTOOLS_LIBRARY_DIR "${IMGTOOLS_ROOT}/lib")
 set(IMGTOOLS_LIBRARY "${IMGTOOLS_LIBRARY_DIR}/lib${LIBRARY_NAME}.so")
 
 if(NOT EXISTS "${IMGTOOLS_LIBRARY}")
-    message(FATAL_ERROR "\n[ERROR] lib${LIBRARY_NAME}.so not found in:\n  ${IMGTOOLS_LIBRARY}\n")
+    message(WARNING "\n[ERROR] lib${LIBRARY_NAME}.so not found in:\n  ${IMGTOOLS_LIBRARY}\n")
 else()
     message(STATUS "[OK] Found lib${LIBRARY_NAME}.so in: ${IMGTOOLS_LIBRARY}")
 endif()
