@@ -4,30 +4,32 @@
 #include <QFileDialog>
 #include <QMessageBox>
 #include <QPixmap>
-#include <QString>
+#include <QTabWidget>
+
+#include <sstream>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent), ui(new Ui::MainWindow) {
 
   ui->setupUi(this);
 
-  // Connect buttons using lambdas (recommended by Qt6)
+  ui->tableReport->setColumnCount(2);
+  ui->tableReport->setHorizontalHeaderLabels({"Metric", "Value"});
+  ui->tableReport->horizontalHeader()->setStretchLastSection(true);
+
+  // Load buttons
   connect(ui->btnLoadImg1, &QPushButton::clicked, this,
           [this]() { loadImage1(); });
 
   connect(ui->btnLoadImg2, &QPushButton::clicked, this,
           [this]() { loadImage2(); });
 
-  connect(ui->btnBasic, &QPushButton::clicked, this, [this]() { runBasic(); });
+  // Visualization buttons
+  connect(ui->btnShowHist, &QPushButton::clicked, this,
+          [this] { showHistograms(); });
 
-  connect(ui->btnHistogram, &QPushButton::clicked, this,
-          [this]() { runHistogram(); });
-
-  connect(ui->btnStructural, &QPushButton::clicked, this,
-          [this]() { runStructural(); });
-
-  connect(ui->btnFeatures, &QPushButton::clicked, this,
-          [this]() { runFeatures(); });
+  connect(ui->btnShowFeatures, &QPushButton::clicked, this,
+          [this] { showFeatures(); });
 }
 
 MainWindow::~MainWindow() { delete ui; }
@@ -82,57 +84,54 @@ void MainWindow::tryRebuildAnalyzer() {
   if (!analyzer_->available()) {
     QMessageBox::warning(this, "Error", "Could not load one or both images.");
   }
+
+  fillReport();
 }
 
-void MainWindow::runBasic() {
+void MainWindow::fillReport() {
   if (!analyzer_ || !analyzer_->available()) {
-    ui->txtReport->setPlainText("Images not available.");
+    ui->tableReport->clearContents();
     return;
   }
 
-  auto ia = analyzer_->analyzer();
+  auto a = analyzer_->analyzer();
 
-  QString report;
-  report += QString::fromStdString(ia->compare_basic()) + "\n";
-  report += QString::fromStdString(ia->compare_color_space());
+  // combine all analyses into key-value lines
+  std::vector<std::pair<std::string, std::string>> rows;
 
-  ui->txtReport->setPlainText(report);
+  auto addLines = [&](const std::string &label, const std::string &txt) {
+    rows.push_back({label, ""});
+    std::istringstream iss(txt);
+    std::string line;
+    while (std::getline(iss, line))
+      if (!line.empty())
+        rows.push_back({"", line});
+  };
+
+  addLines("Basic", a->compare_basic());
+  addLines("Color Space", a->compare_color_space());
+  addLines("Histogram", a->compare_histogram());
+  addLines("Structural", a->compare_structural());
+  addLines("Features", a->compare_features(imgtools::FeatureMethod::AKAZE));
+
+  ui->tableReport->setRowCount(int(rows.size()));
+
+  for (int r = 0; r < (int)rows.size(); r++) {
+    ui->tableReport->setItem(
+        r, 0, new QTableWidgetItem(QString::fromStdString(rows[r].first)));
+    ui->tableReport->setItem(
+        r, 1, new QTableWidgetItem(QString::fromStdString(rows[r].second)));
+  }
 }
 
-void MainWindow::runHistogram() {
-  if (!analyzer_ || !analyzer_->available()) {
-    ui->txtReport->setPlainText("Images not available.");
+void MainWindow::showHistograms() {
+  if (!analyzer_ || !analyzer_->available())
     return;
-  }
-
-  auto ia = analyzer_->analyzer();
-
-  QString report = QString::fromStdString(ia->compare_histogram());
-  ui->txtReport->setPlainText(report);
+  analyzer_->analyzer()->show_histograms();
 }
 
-void MainWindow::runStructural() {
-  if (!analyzer_ || !analyzer_->available()) {
-    ui->txtReport->setPlainText("Images not available.");
+void MainWindow::showFeatures() {
+  if (!analyzer_ || !analyzer_->available())
     return;
-  }
-
-  auto ia = analyzer_->analyzer();
-
-  QString report = QString::fromStdString(ia->compare_structural());
-  ui->txtReport->setPlainText(report);
-}
-
-void MainWindow::runFeatures() {
-  if (!analyzer_ || !analyzer_->available()) {
-    ui->txtReport->setPlainText("Images not available.");
-    return;
-  }
-
-  auto ia = analyzer_->analyzer();
-
-  QString report = QString::fromStdString(
-      ia->compare_features(imgtools::FeatureMethod::AKAZE));
-
-  ui->txtReport->setPlainText(report);
+  analyzer_->analyzer()->show_features(imgtools::FeatureMethod::AKAZE);
 }

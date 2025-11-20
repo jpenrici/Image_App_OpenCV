@@ -270,6 +270,8 @@ auto ImageAnalyzer::compute_histogram() const -> HistogramResult {
   result.kldiv =
       cv::compareHist(result.hist1, result.hist2, cv::HISTCMP_KL_DIV);
 
+  cachedHist_ = result;
+
   return result;
 }
 
@@ -638,6 +640,8 @@ auto ImageAnalyzer::compute_features(FeatureMethod method) const
   result.distanceVariance = variance(distances, result.meanDistance);
   result.meanRatio = mean(ratios);
 
+  cachedFeatures_ = result;
+
   return result;
 }
 
@@ -775,6 +779,67 @@ auto ImageAnalyzer::export_report(const std::filesystem::path &output_path,
 auto ImageAnalyzer::export_report(std::string_view output_path,
                                   FeatureMethod method) -> bool {
   return export_report(std::filesystem::path(output_path), method);
+}
+
+void ImageAnalyzer::show_histograms() const {
+
+  if (!images_available()) {
+    std::println("[show_histograms] Images not available.");
+    return;
+  }
+
+  if (!cachedHist_) {
+    cachedHist_ = compute_histogram();
+  }
+
+  const auto &hr = *cachedHist_;
+
+  // Render
+  int w = 600, h = 400;
+  cv::Mat canvas(h, w, CV_8UC3, cv::Scalar(255, 255, 255));
+
+  int binW = w / 256;
+
+  for (int i = 1; i < 256; i++) {
+
+    int y1 = cvRound(hr.hist1.at<float>(i - 1) * h);
+    int y2 = cvRound(hr.hist1.at<float>(i) * h);
+
+    cv::line(canvas, cv::Point(binW * (i - 1), h - y1),
+             cv::Point(binW * i, h - y2), cv::Scalar(255, 0, 0), 1);
+
+    int z1 = cvRound(hr.hist2.at<float>(i - 1) * h);
+    int z2 = cvRound(hr.hist2.at<float>(i) * h);
+
+    cv::line(canvas, cv::Point(binW * (i - 1), h - z1),
+             cv::Point(binW * i, h - z2), cv::Scalar(0, 0, 255), 1);
+  }
+
+  cv::imshow("Histogram Comparison", canvas);
+  cv::waitKey(1);
+}
+
+void ImageAnalyzer::show_features(FeatureMethod method) const {
+
+  if (!cachedFeatures_ || cachedFeatures_->method != method) {
+    cachedFeatures_ = compute_features(method);
+  }
+
+  const auto &fr = *cachedFeatures_;
+
+  if (fr.keypoints1.empty() || fr.keypoints2.empty()) {
+    std::println("[show_features] No features to show.");
+    return;
+  }
+
+  cv::Mat imgMatches;
+  cv::drawMatches(grayscale1_, fr.keypoints1, grayscale2_, fr.keypoints2,
+                  fr.matches, imgMatches, cv::Scalar::all(-1),
+                  cv::Scalar::all(-1), fr.inliersMask,
+                  cv::DrawMatchesFlags::NOT_DRAW_SINGLE_POINTS);
+
+  cv::imshow("Feature Matching", imgMatches);
+  cv::waitKey(1);
 }
 
 } // namespace imgtools

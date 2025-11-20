@@ -1,11 +1,8 @@
 #ifndef MAINWINDOW_H
 #define MAINWINDOW_H
 
-#include <QLabel>
 #include <QMainWindow>
-#include <QPixmap>
 #include <QString>
-#include <QTextEdit>
 
 #include "imagetoolsgui.hpp"
 
@@ -36,15 +33,16 @@ private:
   std::unique_ptr<ImageAnalyzerGui> analyzer_;
 
   // Internal helpers
-  void tryRebuildAnalyzer();
   void loadImage1();
   void loadImage2();
-  void updatePreview();
 
-  void runBasic();
-  void runHistogram();
-  void runStructural();
-  void runFeatures();
+  void updatePreview();
+  void fillReport();
+  void tryRebuildAnalyzer();
+
+  // Visualizations (OpenCV)
+  void showHistograms();
+  void showFeatures();
 };
 
 #endif // MAINWINDOW_H

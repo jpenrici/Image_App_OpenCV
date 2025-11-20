@@ -2,103 +2,74 @@
 <ui version="4.0">
  <class>MainWindow</class>
  <widget class="QMainWindow" name="MainWindow">
-  <property name="geometry">
-   <rect>
-    <x>0</x><y>0</y><width>1200</width><height>700</height>
-   </rect>
-  </property>
+
   <property name="windowTitle">
-   <string>ImageTools GUI</string>
+   <string>Image Analyzer</string>
   </property>
 
   <widget class="QWidget" name="centralwidget">
-   <layout class="QHBoxLayout" name="mainLayout">
-    <item>
-     <widget class="QFrame" name="leftFrame">
-      <property name="frameShape">
-       <enum>QFrame::StyledPanel</enum>
-      </property>
-      <layout class="QVBoxLayout" name="leftLayout">
+   <layout class="QGridLayout">
 
-       <!-- Image 1 -->
-       <item>
-        <widget class="QLabel" name="labelImg1">
-         <property name="text">
-          <string>[Image 1]</string>
-         </property>
-         <property name="alignment">
-          <set>Qt::AlignCenter</set>
-         </property>
-        </widget>
-       </item>
-       <item>
-        <widget class="QPushButton" name="btnLoadImg1">
-         <property name="text"><string>Load Image 1</string></property>
-        </widget>
-       </item>
+    <!-- LEFT PANEL -->
+    <item row="0" column="0">
+     <layout class="QVBoxLayout">
 
-       <!-- Image 2 -->
-       <item>
-        <widget class="QLabel" name="labelImg2">
-         <property name="text"><string>[Image 2]</string></property>
-         <property name="alignment"><set>Qt::AlignCenter</set></property>
-        </widget>
-       </item>
-       <item>
-        <widget class="QPushButton" name="btnLoadImg2">
-         <property name="text"><string>Load Image 2</string></property>
-        </widget>
-       </item>
+      <item>
+       <widget class="QPushButton" name="btnLoadImg1">
+        <property name="text"><string>Load Image 1</string></property>
+       </widget>
+      </item>
 
-      </layout>
-     </widget>
+      <item>
+       <widget class="QLabel" name="labelImg1">
+        <property name="minimumSize">
+          <size><width>280</width><height>280</height></size>
+        </property>
+        <property name="frameShape"><enum>QFrame::Box</enum></property>
+       </widget>
+      </item>
+
+      <item>
+       <widget class="QPushButton" name="btnLoadImg2">
+        <property name="text"><string>Load Image 2</string></property>
+       </widget>
+      </item>
+
+      <item>
+       <widget class="QLabel" name="labelImg2">
+        <property name="minimumSize">
+          <size><width>280</width><height>280</height></size>
+        </property>
+        <property name="frameShape"><enum>QFrame::Box</enum></property>
+       </widget>
+      </item>
+
+     </layout>
     </item>
 
-    <item>
-     <widget class="QFrame" name="rightFrame">
-      <property name="frameShape">
-       <enum>QFrame::StyledPanel</enum>
-      </property>
+    <!-- RIGHT PANEL -->
+    <item row="0" column="1">
+     <layout class="QVBoxLayout">
 
-      <layout class="QVBoxLayout" name="rightLayout">
-       <item>
-        <widget class="QTextEdit" name="txtReport">
-         <property name="readOnly"><bool>true</bool></property>
-        </widget>
-       </item>
+      <item>
+       <widget class="QTableWidget" name="tableReport"/>
+      </item>
 
-       <item>
-        <layout class="QHBoxLayout" name="buttonRow">
+      <item>
+       <layout class="QHBoxLayout">
 
-         <item>
-          <widget class="QPushButton" name="btnBasic">
-           <property name="text"><string>Basic</string></property>
-          </widget>
-         </item>
+        <item><widget class="QPushButton" name="btnShowHist">
+          <property name="text"><string>Show Histograms</string></property>
+        </widget></item>
 
-         <item>
-          <widget class="QPushButton" name="btnHistogram">
-           <property name="text"><string>Histogram</string></property>
-          </widget>
-         </item>
+        <item><widget class="QPushButton" name="btnShowFeatures">
+          <property name="text"><string>Show Features</string></property>
+        </widget></item>
 
-         <item>
-          <widget class="QPushButton" name="btnStructural">
-           <property name="text"><string>Structural</string></property>
-          </widget>
-         </item>
+       </layout>
+      </item>
 
-         <item>
-          <widget class="QPushButton" name="btnFeatures">
-           <property name="text"><string>Features</string></property>
-          </widget>
-         </item>
-
-        </layout>
-       </item>
-
-      </layout>
-     </widget>
+     </layout>
     </item>
 
    </layout>

@@ -229,6 +229,12 @@ public:
 
     [[nodiscard]] auto images_available() const -> bool;
 
+    // --------------------------------------------------------------
+    //  VISUALIZATION FUNCTIONS (for GUI using OpenCV)
+    // --------------------------------------------------------------
+    void show_histograms() const;
+    void show_features(FeatureMethod method = FeatureMethod::AKAZE) const;
+
 private:
     cv::Mat image1_;
     cv::Mat image2_;
@@ -239,6 +245,10 @@ private:
     std::filesystem::path path2_;
 
     bool images_loaded_;
+
+    // Cache
+    mutable std::optional<HistogramResult> cachedHist_;
+    mutable std::optional<FeatureResult> cachedFeatures_;
 
     /**
      * @brief Loads both images (color + grayscale).
