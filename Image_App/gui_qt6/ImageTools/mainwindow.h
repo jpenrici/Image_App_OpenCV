@@ -33,6 +33,7 @@ private:
   std::unique_ptr<ImageAnalyzerGui> analyzer_;
 
   // Internal helpers
+  auto loadImage() -> QString;
   void loadImage1();
   void loadImage2();
 
@@ -43,6 +44,9 @@ private:
   // Visualizations (OpenCV)
   void showHistograms();
   void showFeatures();
+
+  // Export
+  void exportReport();
 };
 
 #endif // MAINWINDOW_H

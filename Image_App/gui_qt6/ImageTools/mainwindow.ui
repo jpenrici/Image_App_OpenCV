@@ -66,6 +66,10 @@
           <property name="text"><string>Show Features</string></property>
         </widget></item>
 
+        <item><widget class="QPushButton" name="btnExportReport">
+          <property name="text"><string>Export Report</string></property>
+        </widget></item>        
+
        </layout>
       </item>
 

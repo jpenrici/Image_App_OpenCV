@@ -6,6 +6,7 @@
 #include <QPixmap>
 #include <QTabWidget>
 
+#include <print>
 #include <sstream>
 
 MainWindow::MainWindow(QWidget *parent)
@@ -30,23 +31,40 @@ MainWindow::MainWindow(QWidget *parent)
 
   connect(ui->btnShowFeatures, &QPushButton::clicked, this,
           [this] { showFeatures(); });
+
+  connect(ui->btnExportReport, &QPushButton::clicked, this,
+          [this] { exportReport(); });
 }
 
 MainWindow::~MainWindow() { delete ui; }
 
+auto MainWindow::loadImage() -> QString {
+  // Extensões mais comuns suportadas pelo OpenCV
+  const QString filter =
+      "Images (*.png *.jpg *.jpeg *.bmp *.tiff *.tif *.webp *.ppm *.pgm *.gif)";
+
+  QString p =
+      QFileDialog::getOpenFileName(this, "Select Image", QString(), filter);
+
+  if (p.isEmpty()) {
+    QMessageBox::warning(this, "Invalid Image", "Invalid name!");
+    return {};
+  }
+
+  return p;
+}
+
 void MainWindow::loadImage1() {
-  auto p = QFileDialog::getOpenFileName(this, "Select Image 1");
-  if (!p.isEmpty()) {
-    path1_ = p;
+  path1_ = loadImage();
+  if (!path1_.isEmpty()) {
     updatePreview();
     tryRebuildAnalyzer();
   }
 }
 
 void MainWindow::loadImage2() {
-  auto p = QFileDialog::getOpenFileName(this, "Select Image 2");
-  if (!p.isEmpty()) {
-    path2_ = p;
+  path2_ = loadImage();
+  if (!path2_.isEmpty()) {
     updatePreview();
     tryRebuildAnalyzer();
   }
@@ -134,4 +152,38 @@ void MainWindow::showFeatures() {
   if (!analyzer_ || !analyzer_->available())
     return;
   analyzer_->analyzer()->show_features(imgtools::FeatureMethod::AKAZE);
+}
+
+void MainWindow::exportReport() {
+
+  if (!analyzer_ || !analyzer_->available()) {
+    QMessageBox::warning(this, "Warning",
+                         "Load two valid images before exporting a report.");
+    return;
+  }
+
+  auto name1 = std::filesystem::path(path1_.toStdString()).filename().string();
+  auto name2 = std::filesystem::path(path2_.toStdString()).filename().string();
+
+  auto output_name =
+      std::format("report_{}_{}", name1.substr(0, name1.find('.')),
+                  name2.substr(0, name2.find('.')));
+  auto output_path = std::format("./{}", output_name);
+
+  auto suggested = QString::fromStdString(output_name + ".txt");
+
+  auto p = QFileDialog::getSaveFileName(this, "Save As", suggested,
+                                        "Text Files (*.txt);;All Files (*.*)");
+
+  if (!p.isEmpty()) {
+    auto path = p;
+    bool ok = analyzer_->analyzer()->export_report(
+        path.toStdString()); // Use the standard method
+    if (ok) {
+      QMessageBox::information(this, "Success",
+                               "Report exported successfully:\n" + path);
+    } else {
+      QMessageBox::critical(this, "Error", "Failed to export the report.");
+    }
+  }
 }
